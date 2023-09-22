@@ -7,28 +7,32 @@ set nd to nextnode.
 //print out node's basic parameters - ETA and deltaV
 print "Node in: " + round(nd:eta) + ", DeltaV: " + round(nd:deltav:mag).
 
-//calculate ship's max acceleration
-set max_acc to ship:maxthrust/ship:mass.
+// determine engine ISP
 
-// Now we just need to divide deltav:mag by our ship's max acceleration
-// to get the estimated time of the burn.
-//
-// Please note, this is not exactly correct.  The real calculation
-// needs to take into account the fact that the mass will decrease
-// as you lose fuel during the burn.  In fact throwing the fuel out
-// the back of the engine very fast is the entire reason you're able
-// to thrust at all in space.  The proper calculation for this
-// can be found easily enough online by searching for the phrase
-//   "Tsiolkovsky rocket equation".
-// This example here will keep it simple for demonstration purposes,
-// but if you're going to build a serious node execution script, you
-// need to look into the Tsiolkovsky rocket equation to account for
-// the change in mass over time as you burn.
-//
-set burn_duration to nd:deltav:mag/max_acc.
-print "Crude Estimated burn duration: " + round(burn_duration) + "s".
+list engines in eng_list.
 
-wait until nd:eta <= (burn_duration/2 + 60).
+for en_ in eng_list {
+  if en_:vacuumisp > 0 {
+	set en to en_.
+  }
+}
+
+// determine burn time
+
+set thrust to ship:maxthrustat(0).
+set wMass to ship:mass.
+set dMass to wMass / (constant:E ^ (dv / (en:isp * constant:g0))).
+set flowRate to thrust / (en:isp * constant:g0).
+set burn_time to (wMass - dMass) / flowRate.
+
+print "Burn will take " + round(burn_time) + "s.".
+set warp to 2.
+
+wait until nd:eta <= (burn_time/2 + 30).
+
+set warp to 0.
+
+print "Preparing to burn.".
 
 set np to nd:deltav. //points to node, don't care about the roll direction.
 lock steering to np.
@@ -37,19 +41,21 @@ lock steering to np.
 wait until vang(np, ship:facing:vector) < 0.25.
 
 //the ship is facing the right direction, let's wait for our burn time
-wait until nd:eta <= (burn_duration/2).
+wait until nd:eta <= (burn_time/2).
 
 //we only need to lock throttle once to a certain variable in the beginning of the loop, and adjust only the variable itself inside it
 set tset to 0.
 lock throttle to tset.
+
+print "Start burn.".
 
 set done to False.
 //initial deltav
 set dv0 to nd:deltav.
 until done
 {
-    //recalculate current max_acceleration, as it changes while we burn through fuel
-    set max_acc to ship:maxthrust/ship:mass.
+    // recalculate current max_acceleration, as it changes while we burn through fuel
+    set max_acc to ship:maxthrustat(0)/ship:mass.
 
     //throttle is 100% until there is less than 1 second of time left to burn
     //when there is less than 1 second - decrease the throttle linearly
@@ -81,8 +87,8 @@ unlock steering.
 unlock throttle.
 wait 1.
 
-//we no longer need the maneuver node
-remove nd.
+// we no longer need the maneuver node, but leave it in case manual correction is needed
+// remove nd.
 
 //set throttle to 0 just in case.
 SET SHIP:CONTROL:PILOTMAINTHROTTLE TO 0.
