@@ -91,7 +91,7 @@ lock pitch to ascent - (eta:apoapsis - 30) / 2.
 lock hdg to heading(90, max(0, pitch)).
 
 until eta:apoapsis > 60 {
-  print round(pitch) + "º > " + round(prograde:pitch) + "º / " + round(eta:apoapsis) + "s @ " + round(altitude) + "m.".
+  print round(pitch) + "º / " + round(eta:apoapsis) + "s @ " + round(altitude) + "m.".
   wait 5.
  }
 
