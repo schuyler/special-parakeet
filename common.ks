@@ -1,3 +1,20 @@
+function speed_of_sound {
+  parameter alt_ is altitude.
+  parameter body_ is body.
+
+  set atm to body_:atm.
+  set p to atm:altitudepressure(alt_) * constant:atmtokpa.
+  set t to atm:altitudetemperature(alt_).
+  set rho to p * atm:molarmass / (constant:idealgas * t).
+  return sqrt(atm:adiabaticindex * p / rho).
+}
+
+function mach_number {
+  parameter speed is airspeed.
+  parameter alt_ is altitude.
+  parameter body_ is body.
+  return speed / speed_of_sound(alt_, body_).
+}
 
 function burn_time {
   parameter delta_v.
@@ -7,6 +24,7 @@ function burn_time {
   list engines in eng_list.
 
   for en_ in eng_list {
+    // TODO: use en_:ignition instead
     if en_:vacuumisp > 0 {
 	  set en to en_.
     }
