@@ -45,25 +45,27 @@ set dMass to wMass / (constant:E ^ (dv / (en:isp * constant:g0))).
 set flowRate to thrust / (en:isp * constant:g0).
 set burn_time to (wMass - dMass) / flowRate.
 
-print "Burn will take " + round(burn_time) + "s.".
+print "Burn will take " + round(burn_time, 3) + "s.".
 
 // Leave enough time to point to prograde.
-
-set delay to eta:apoapsis - burn_time / 2 - 15.
+// FIXME: This code doesn't leave enough time to reach prograde if warp is too high.
+set delay to eta:apoapsis - burn_time / 2 - 60.
 if delay > 0 {
-  set warp to 2.
-  wait delay.
+  warpto(time:seconds + delay).
+  wait until kuniverse:timewarp:issettled.
 }
-set warp to 0.
 
-print "Performing burn.".
-
+// TODO: create maneuver node and execute it
 lock steering to prograde.
-wait (eta:apoapsis - burn_time / 2).
+set delay to (eta:apoapsis - burn_time / 2).
+print "Performing burn in " + delay + "s.".
+wait delay.
 
 lock throttle to 1.
 wait burn_time. 
 lock throttle to 0.
+
+print "Burn complete.".
 
 ///// FINISH /////
 
