@@ -10,7 +10,8 @@ if (altitude < 70000) {
   set warp to 2.
   wait until altitude > 70000.
 }
-set warpmode to "rails".
+set warp to 0.
+wait until kuniverse:timewarp:issettled.
 
 // Compute dV
 
@@ -52,14 +53,17 @@ print "Burn will take " + round(burn_time, 3) + "s.".
 set delay to eta:apoapsis - burn_time / 2 - 60.
 if delay > 0 {
   warpto(time:seconds + delay).
-  wait until kuniverse:timewarp:issettled.
 }
+set warp to 0.
+wait until kuniverse:timewarp:issettled.
 
 // TODO: create maneuver node and execute it
 lock steering to prograde.
 set delay to (eta:apoapsis - burn_time / 2).
-print "Performing burn in " + delay + "s.".
-wait delay.
+if delay > 0 {
+  print "Performing burn in " + delay + "s.".
+  wait delay.
+}
 
 lock throttle to 1.
 wait burn_time. 
