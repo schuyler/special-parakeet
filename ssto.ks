@@ -4,6 +4,8 @@ print "== SSTO LAUNCH ==".
 ///// CONFIGURE /////
 
 set dir to 90.
+set takeoff_speed to 120.
+set takeoff_AoA to 15.
 
 ///// set up flight controls /////
 
@@ -19,10 +21,10 @@ set lights to true.
 
 print "Starting engines.".
 stage.
-wait until airspeed > 120.
+wait until airspeed > takeoff_speed.
 
 print "Take off.".
-set hdg to heading(dir, 20).
+set hdg to heading(dir, takeoff_AoA).
 wait 3.
 set gear to false.
 
@@ -101,14 +103,14 @@ print "Activating rocket engines at " + round(altitude) + "m.".
 stage.
 wait 5.
 
-if airspeed < 500 {
+if airspeed < ideal_speed {
   set hdg to heading(dir, 5).
-  wait until ship:airspeed > 500.
+  wait until ship:airspeed > ideal_speed.
 }
 
 print "Starting rocket ascent.".
 
-// 20º is too flat to start. OTOH it results in an orbital burn of 98 m/s.
+// 20º causes some heating. OTOH it results in an orbital burn of 98 m/s.
 // 22º is pretty good and doesn't result in much heating.
 
 set ascent to 22.
@@ -117,7 +119,7 @@ set hdg to heading(dir, ascent).
 wait 5. // settle down
 wait until eta:apoapsis > 30.
 
-print "Pitching down at " + round(altitude) + "m.".
+print "Starting gravity turn at " + round(altitude) + "m.".
 set ag2 to true.
 
 // Level off -- this is a TOTAL hack
