@@ -3,9 +3,13 @@ clearscreen.
 print "=== MANEUVER ===".
 
 set nd to nextnode.
+set dv to nd:deltav:mag.
+set initial_sas to sas.
+
+sas off.
 
 //print out node's basic parameters - ETA and deltaV
-print "Node in: " + round(nd:eta) + ", DeltaV: " + round(nd:deltav:mag).
+print "Node in: " + round(nd:eta) + ", DeltaV: " + round(dv, 1).
 
 // determine engine ISP
 
@@ -26,15 +30,15 @@ set flowRate to thrust / (en:isp * constant:g0).
 set burn_time to (wMass - dMass) / flowRate.
 
 print "Burn will take " + round(burn_time) + "s.".
-set warp to 2.
 
-wait until nd:eta <= (burn_time/2 + 30).
-
-set warp to 0.
+set prepare_time to nd:time - burn_time / 2 - 60.
+if prepare_time > time:seconds {
+  warpto(prepare_time).
+}
 
 print "Preparing to burn.".
 
-set np to nd:deltav. //points to node, don't care about the roll direction.
+lock np to nd:deltav. //points to node, don't care about the roll direction.
 lock steering to np.
 
 //now we need to wait until the burn vector and ship's facing are aligned
@@ -92,3 +96,4 @@ wait 1.
 
 //set throttle to 0 just in case.
 SET SHIP:CONTROL:PILOTMAINTHROTTLE TO 0.
+set sas to initial_sas.
