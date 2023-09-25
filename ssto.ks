@@ -140,6 +140,19 @@ wait until apoapsis > 72000.
 lock throttle to 0.
 wait 1.
 
+/// Keep apoapsis suborbital.
+
+until altitude >= 69000 {
+  if apoapsis < 70000 {
+    print "Burning to keep apoapsis suborbital.".
+    lock throttle to 1.
+    wait until apoapsis > 72000.
+    lock throttle to 0.
+  }
+  wait 1.
+}
+
+
 /// FINISH IN SUB-ORBIT
 
 set warp to 0.
@@ -147,3 +160,5 @@ unlock throttle.
 unlock steering.
 
 wait until kuniverse:timewarp:issettled.
+
+run circularize.
