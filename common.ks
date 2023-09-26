@@ -166,3 +166,31 @@ function execute_node {
   SET SHIP:CONTROL:PILOTMAINTHROTTLE TO 0.
   set sas to initial_sas.
 }
+
+function above_terrain {
+  parameter t.
+  local pos is positionat(ship, time:seconds + t).
+  local b is ship:body.
+  return b:altitudeof(pos) - b:geopositionof(pos):terrainheight.
+}
+
+function landing_time {
+  if ship:periapsis > 0 {
+    return -1.
+  }
+  local t is 0.
+  local h is above_terrain(t).
+  local dt is ship:orbit:eta:periapsis / 2.
+  // print "DT: " + round(dt, 1) + " T:" + round(t, 1) + " H:" + round(h,1).
+  until abs(dt) <= 0.1 {
+    local t1 is t + dt.
+    local h1 is above_terrain(t1).
+    local slope is (h - h1) / dt.
+    // print "DT: " + round(dt, 1) + " T:" + round(t1, 1) + " H:" + round(h1,1) + " M:" + round(slope, 3).
+    set dt to h1 / slope.
+    set h to h1.
+    set t to t1.
+  }
+  // print "DT: " + round(dt, 1) + " T:" + round(t, 1) + " H:" + round(h,1).
+  return t.
+}
