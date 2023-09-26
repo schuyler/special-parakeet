@@ -1,3 +1,23 @@
+function minimize {
+  parameter func, a, b.
+  parameter epsilon is 0.2.
+  parameter nmax is 1000.
+
+  local n is 0.
+  until n > nmax or abs(b - a) < epsilon {
+    //print "A: " + round(a, 1) + " F(a): " + round(func(a), 1) + " B: " + round(b, 1) + " F(b): " + round(func(b),1).
+    set m1 to a + (b - a) / 3.
+    set m2 to b - (b - a) / 3.
+    if func(m1) > func(m2) {
+	set a to m1.
+    } else {
+	set b to m2.
+    }
+    set n to n + 1.
+  }
+  return (a + b) / 2.
+}
+
 function burn_duration {
   parameter delta_v.
 
@@ -145,3 +165,17 @@ function landing_time {
   // print "DT: " + round(dt, 1) + " T:" + round(t, 1) + " H:" + round(h,1).
   return t.
 }
+
+function separation_at {
+  parameter t.
+  local s1 is positionat(ship, time:seconds + t).
+  local s2 is positionat(target, time:seconds + t).
+  local d_pos is s2 - s1.
+  return d_pos:mag.
+}
+
+function closest_approach {
+  return minimize(separation_at@, 0, ship:orbit:period / 2, 1).
+}
+
+//print "Closest approach: " + round(closest_approach()) + "s.".
