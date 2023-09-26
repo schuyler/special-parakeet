@@ -1,4 +1,5 @@
 function minimize {
+  // this is basically ternary search straight off Wikipedia
   parameter func, a, b.
   parameter epsilon is 0.2.
   parameter nmax is 1000.
@@ -175,7 +176,41 @@ function separation_at {
 }
 
 function closest_approach {
-  return minimize(separation_at@, 0, ship:orbit:period / 2, 1).
+  return minimize(separation_at@, 0, ship:orbit:period / 2, 0.1).
 }
 
-//print "Closest approach: " + round(closest_approach()) + "s.".
+function relative_velocity_at {
+  parameter t.
+  local v1 is velocityat(ship, time:seconds + t):orbit.
+  local v2 is velocityat(target, time:seconds + t):orbit.
+  return v2 - v1.
+}
+
+function intercept {
+  local dt to closest_approach().
+  local dv to relative_velocity_at(dt).
+  print "Closest approach: " + round(c) + "s.".
+  print "Velocity: " + dv + " = " + dv:mag + " m/s.".
+
+  local t is time:seconds + dt.
+
+  // https://www.reddit.com/r/Kos/comments/701k7w/creating_maneuver_node_from_a_burn_vector/
+  // Determine the prograde, normal, and radial components of the ship's velocity at time t.
+  // As near as I can tell, this rotates the body-centered delta-v into the ship-centered axes
+  // of the maneuver node.
+  //
+  local s_pro is velocityat(ship, t):orbit.
+  // The normal axis is perpendicular to prograde and points away from the orbital body's center.
+  local s_pos is positionat(ship, t) - body:position.
+  local s_nrm is vcrs(s_pro,s_pos).
+  // The radial axis is perpendicular to the prograde and normal axes.
+  local s_rad is vcrs(s_nrm,s_pro).
+
+  // Scale each burn axis by the desired amount in each direction
+  local pro is vdot(dv,s_pro:normalized).
+  local nrm is vdot(dv,s_nrm:normalized).
+  local rad is vdot(dv,s_rad:normalized).
+
+  local nd to node(time:seconds + c, rad, nrm, pro).
+  add(nd).
+}
