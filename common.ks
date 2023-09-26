@@ -79,23 +79,7 @@ function execute_node {
   //print out node's basic parameters - ETA and deltaV
   print "Node in: " + round(nd:eta) + ", DeltaV: " + round(dv, 1).
 
-  // determine engine ISP
-
-  list engines in eng_list.
-
-  for en_ in eng_list {
-    if en_:vacuumisp > 0 {
-	  set en to en_.
-    }
-  }
-
-  // determine burn time
-
-  set thrust to ship:maxthrustat(0).
-  set wMass to ship:mass.
-  set dMass to wMass / (constant:E ^ (dv / (en:isp * constant:g0))).
-  set flowRate to thrust / (en:isp * constant:g0).
-  set burn_time to (wMass - dMass) / flowRate.
+  set burn_time to burn_duration(dv).
 
   print "Burn will take " + round(burn_time) + "s.".
 
