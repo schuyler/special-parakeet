@@ -56,22 +56,23 @@ wait until airspeed <= altitude / 16.
 ///// WET MODE ASCENT /////
 
 print "Switching engines to wet mode at " + round(altitude) + "m.".
-set hdg to heading(dir, 5). // KNOWN WORKING
-set ag1 to true.
+//set hdg to heading(dir, 5). // KNOWN WORKING
 
 // Todo: replace "pitch" with "AoA"
 
-set min_pitch to 3.
+set min_pitch to 5.
 set max_pitch to 30.
 set pitch to min_pitch.
 set d_pitch to 0.005.
 
-set max_speed to airspeed.
 lock hdg to heading(dir, pitch).
+set ag1 to true.
+
 set start_speed to airspeed.
-lock ideal_speed to max(start_speed, altitude / 16).
+set max_speed to start_speed.
 
 wait 5.
+lock ideal_speed to max(start_speed, altitude / 16).
 
 // Until we start to lose airspeed at or below min_pitch...
 until max_speed > airspeed and pitch <= min_pitch {
