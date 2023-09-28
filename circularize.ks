@@ -33,10 +33,13 @@ print round(dv, 1) + " m/s needed.".
 list engines in eng_list.
 
 for en_ in eng_list {
-  if en_:vacuumisp > 0 {
+  if en_:ignition {
 	set en to en_.
+        break.
   }
 }
+
+print "Engine ISP is " + round(en:isp, 1) + "s.".
 
 // determine burn time
 
@@ -46,7 +49,7 @@ set dMass to wMass / (constant:E ^ (dv / (en:isp * constant:g0))).
 set flowRate to thrust / (en:isp * constant:g0).
 set burn_time to (wMass - dMass) / flowRate.
 
-print "Burn will take " + round(burn_time, 3) + "s.".
+print "Burn will take " + round(burn_time, 1) + "s.".
 
 // Leave enough time to point to prograde.
 // FIXME: This code doesn't leave enough time to reach prograde if warp is too high.
@@ -61,7 +64,7 @@ wait until kuniverse:timewarp:issettled.
 lock steering to prograde.
 set delay to (eta:apoapsis - burn_time / 2).
 if delay > 0 {
-  print "Performing burn in " + delay + "s.".
+  print "Performing burn in " + round(delay, 1) + "s.".
   wait delay.
 }
 
