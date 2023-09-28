@@ -57,6 +57,11 @@ function orbital_speed {
   return sqrt(g * ((2 / r_) - (1 / a))).
 }
 
+function steering_aligned_to {
+  parameter dv.
+  return vang(dv:vector, ship:facing:vector) < 0.25.
+}
+
 function execute_node {
   parameter nd is nextnode.
   set dv to nd:deltav:mag.
@@ -71,10 +76,13 @@ function execute_node {
 
   print "Burn will take " + round(burn_time) + "s.".
 
+  // FIXME: This code should track orientation to the node before/through warp
   set prepare_time to nd:time - burn_time / 2 - 60.
   if prepare_time > time:seconds {
-    warpto(prepare_time).
+   warpto(prepare_time).
   }
+  wait until time:seconds > prepare_time.
+  set warp to 0.
 
   print "Preparing to burn.".
 
@@ -82,7 +90,7 @@ function execute_node {
   lock steering to np.
 
   //now we need to wait until the burn vector and ship's facing are aligned
-  wait until vang(np, ship:facing:vector) < 0.25.
+  wait until steering_aligned_to(np).
 
   //the ship is facing the right direction, let's wait for our burn time
   wait until nd:eta <= (burn_time/2).
@@ -186,10 +194,34 @@ function relative_velocity_at {
   return v2 - v1.
 }
 
+function node_from_velocity {
+  parameter dv.
+  parameter t.
+
+  // https://www.reddit.com/r/Kos/comments/701k7w/creating_maneuver_node_from_a_burn_vector/
+  // Determine the prograde, normal, and radial components of the ship's velocity at time t.
+  // As near as I can tell, this rotates the body-centered delta-v into the ship-centered axes
+  // of the maneuver node.
+  //
+  local s_pro is velocityat(ship, t):orbit.
+  // The normal axis is perpendicular to prograde and points away from the orbital body's center.
+  local s_pos is positionat(ship, t) - body:position.
+  local s_nrm is vcrs(s_pro,s_pos).
+  // The radial axis is perpendicular to the prograde and normal axes.
+  local s_rad is vcrs(s_nrm,s_pro).
+
+  // Scale each burn axis by the desired amount in each direction
+  local pro is vdot(dv,s_pro:normalized).
+  local nrm is vdot(dv,s_nrm:normalized).
+  local rad is vdot(dv,s_rad:normalized).
+
+  return node(t, rad, nrm, pro).
+}  
+
 function intercept {
   local dt to closest_approach().
   local dv to relative_velocity_at(dt).
-  print "Closest approach: " + round(c) + "s.".
+  print "Closest approach: " + round(dt) + "s.".
   print "Velocity: " + dv + " = " + dv:mag + " m/s.".
 
   local t is time:seconds + dt.
@@ -211,6 +243,6 @@ function intercept {
   local nrm is vdot(dv,s_nrm:normalized).
   local rad is vdot(dv,s_rad:normalized).
 
-  local nd to node(time:seconds + c, rad, nrm, pro).
+  local nd to node(t, rad, nrm, pro).
   add(nd).
 }
