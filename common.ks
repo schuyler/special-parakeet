@@ -48,12 +48,12 @@ function burn_duration {
 
 // vis-viva equation
 function orbital_speed {
-  parameter orbiter is ship.
-  parameter altitude_ is orbiter:altitude.
-  parameter apo is orbiter:apoapsis.
-  parameter peri is orbiter:periapsis.
+  parameter orbit_ is ship:orbit.
+  parameter altitude_ is orbit_:body:altitudeof(orbit_:position).
+  parameter apo is orbit:apoapsis.
+  parameter peri is orbit:periapsis.
 
-  local body_ to orbiter:body.
+  local body_ to orbit_:body.
   local g to body_:mu.
   local r_ to body_:radius + altitude_.
   local a to (2 * body_:radius + apo + peri) / 2.
@@ -87,7 +87,6 @@ function node_from_velocity {
 
 // Translated from https://physics.stackexchange.com/a/333897
 
-// KNOWN WORKING
 function eccentricity {
   parameter apo, peri.
   parameter r_b is ship:body:radius.
@@ -96,7 +95,6 @@ function eccentricity {
   return (r_a - r_p) / (r_a + r_p).
 }
 
-// KNOWN WORKING
 function semi_major_axis {
   parameter apo, peri.
   parameter r_b is ship:body:radius.
@@ -125,7 +123,6 @@ function mean_anomaly {
   return m_r.
 }
 
-// KNOWN WORKING
 function orbital_period {
   // Kepler's 3rd law
   parameter a.
@@ -133,7 +130,7 @@ function orbital_period {
   return 2 * constant:pi * sqrt(a ^ 3 / mu).
 }
   
-function time_from_periapsis {
+function time_since_periapsis {
   parameter alt_.
   parameter apo is ship:orbit:apoapsis.
   parameter peri is ship:orbit:periapsis.
@@ -141,7 +138,7 @@ function time_from_periapsis {
   local a to semi_major_axis(apo, peri).
   local e to eccentricity(apo, peri).
   local m_r to mean_anomaly(e, a, r_). // returns º
-  // mean_anomaly is in range [0, 360º] so scale to orbital fraction
+  // mean_anomaly is in range [0, 360º] so scale to fraction of an orbit
   return orbital_period(a) * m_r / 360.
 }
 
@@ -150,8 +147,8 @@ function time_to_altitude {
   parameter start_alt is ship:altitude.
   parameter apo is ship:orbit:apoapsis.
   parameter peri is ship:orbit:periapsis.
-  local t0 to time_from_periapsis(start_alt, apo, peri).
-  local t1 to time_from_periapsis(target_alt, apo, peri).
+  local t0 to time_since_periapsis(start_alt, apo, peri).
+  local t1 to time_since_periapsis(target_alt, apo, peri).
   local dt to t1 - t0.
   if dt < 0 {
     set dt to dt + orbital_period(semi_major_axis(apo, peri)).
