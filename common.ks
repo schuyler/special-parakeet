@@ -155,9 +155,6 @@ function above_terrain {
 }
 
 function landing_time {
-  if ship:periapsis > 0 {
-    return -1.
-  }
   local t is 0.
   local h is above_terrain(t).
   local dt is ship:orbit:eta:periapsis / 2.
@@ -173,6 +170,12 @@ function landing_time {
   }
   // print "DT: " + round(dt, 1) + " T:" + round(t, 1) + " H:" + round(h,1).
   return t.
+}
+
+function landing_site {
+   parameter t_land to landing_time().
+   local pos to positionat(ship, time:seconds + t_land).
+   return ship:body:geopositionof(pos).
 }
 
 function separation_at {
