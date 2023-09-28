@@ -1,3 +1,6 @@
+// === ORBITAL PREDICTION ===
+
+// Minimize a function value
 function minimize {
   // this is basically ternary search straight off Wikipedia
   parameter func, a, b.
@@ -19,6 +22,7 @@ function minimize {
   return (a + b) / 2.
 }
 
+// Rocket equation
 function burn_duration {
   parameter delta_v.
 
@@ -33,7 +37,6 @@ function burn_duration {
     }
   }
 
-  // determine burn time
   // TBD: work through the Rocket Equation and confirm this math
   local thrust to ship:maxthrustat(0).
   local wMass to ship:mass.
@@ -43,9 +46,9 @@ function burn_duration {
   return burn_time.
 }
 
+// vis-viva equation
 function orbital_speed {
-  // it's the good old vis-viva equation
-  parameter orbiter.
+  parameter orbiter is ship.
   parameter altitude_ is orbiter:altitude.
   parameter apo is orbiter:apoapsis.
   parameter peri is orbiter:periapsis.
@@ -56,6 +59,33 @@ function orbital_speed {
   local a to (2 * body_:radius + apo + peri) / 2.
   return sqrt(g * ((2 / r_) - (1 / a))).
 }
+
+// Compute maneuver node from desired delta-V vector
+function node_from_velocity {
+  parameter dv.
+  parameter t.
+
+  // https://www.reddit.com/r/Kos/comments/701k7w/creating_maneuver_node_from_a_burn_vector/
+  // Determine the prograde, normal, and radial components of the ship's velocity at time t.
+  // As near as I can tell, this rotates the body-centered delta-v into the ship-centered axes
+  // of the maneuver node.
+  //
+  local s_pro is velocityat(ship, t):orbit.
+  // The normal axis is perpendicular to prograde and points away from the orbital body's center.
+  local s_pos is positionat(ship, t) - body:position.
+  local s_nrm is vcrs(s_pro,s_pos).
+  // The radial axis is perpendicular to the prograde and normal axes.
+  local s_rad is vcrs(s_nrm,s_pro).
+
+  // Scale each burn axis by the desired amount in each direction
+  local pro is vdot(dv,s_pro:normalized).
+  local nrm is vdot(dv,s_nrm:normalized).
+  local rad is vdot(dv,s_rad:normalized).
+
+  return node(t, rad, nrm, pro).
+}  
+
+// === OPERATIONS ===
 
 function steering_aligned_to {
   parameter dv.
@@ -147,6 +177,8 @@ function execute_node {
   set sas to initial_sas.
 }
 
+// === LANDING CALCULATION ===
+
 function above_terrain {
   parameter t.
   local pos is positionat(ship, time:seconds + t).
@@ -178,6 +210,8 @@ function landing_site {
    return ship:body:geopositionof(pos).
 }
 
+// === INTERCEPT CALCULATION ===
+
 function separation_at {
   parameter t.
   local s1 is positionat(ship, time:seconds + t).
@@ -197,30 +231,6 @@ function relative_velocity_at {
   return v2 - v1.
 }
 
-function node_from_velocity {
-  parameter dv.
-  parameter t.
-
-  // https://www.reddit.com/r/Kos/comments/701k7w/creating_maneuver_node_from_a_burn_vector/
-  // Determine the prograde, normal, and radial components of the ship's velocity at time t.
-  // As near as I can tell, this rotates the body-centered delta-v into the ship-centered axes
-  // of the maneuver node.
-  //
-  local s_pro is velocityat(ship, t):orbit.
-  // The normal axis is perpendicular to prograde and points away from the orbital body's center.
-  local s_pos is positionat(ship, t) - body:position.
-  local s_nrm is vcrs(s_pro,s_pos).
-  // The radial axis is perpendicular to the prograde and normal axes.
-  local s_rad is vcrs(s_nrm,s_pro).
-
-  // Scale each burn axis by the desired amount in each direction
-  local pro is vdot(dv,s_pro:normalized).
-  local nrm is vdot(dv,s_nrm:normalized).
-  local rad is vdot(dv,s_rad:normalized).
-
-  return node(t, rad, nrm, pro).
-}  
-
 function intercept {
   local dt to closest_approach().
   local dv to relative_velocity_at(dt).
@@ -228,24 +238,6 @@ function intercept {
   print "Velocity: " + dv + " = " + dv:mag + " m/s.".
 
   local t is time:seconds + dt.
-
-  // https://www.reddit.com/r/Kos/comments/701k7w/creating_maneuver_node_from_a_burn_vector/
-  // Determine the prograde, normal, and radial components of the ship's velocity at time t.
-  // As near as I can tell, this rotates the body-centered delta-v into the ship-centered axes
-  // of the maneuver node.
-  //
-  local s_pro is velocityat(ship, t):orbit.
-  // The normal axis is perpendicular to prograde and points away from the orbital body's center.
-  local s_pos is positionat(ship, t) - body:position.
-  local s_nrm is vcrs(s_pro,s_pos).
-  // The radial axis is perpendicular to the prograde and normal axes.
-  local s_rad is vcrs(s_nrm,s_pro).
-
-  // Scale each burn axis by the desired amount in each direction
-  local pro is vdot(dv,s_pro:normalized).
-  local nrm is vdot(dv,s_nrm:normalized).
-  local rad is vdot(dv,s_rad:normalized).
-
-  local nd to node(t, rad, nrm, pro).
+  local nd is node_from_velocity(dv).
   add(nd).
 }
