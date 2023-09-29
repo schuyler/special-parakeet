@@ -1,14 +1,5 @@
 // --- ORBITAL COMPUTATION
 
-// What's the altitude of that orbit at time t?
-// This is defined on Orbitables but not Orbits
-function altitude_at { // return m above sea level
-  parameter ob0 is ship:orbit.
-  parameter t is timestamp().
-  local ob to orbit_at(ob0, t).
-  return ob:body:altitudeof(ob:position).
-} 
-
 // Eccentric anomaly at a given orbital radius (distance from body CoM)
 function eccentric_anomaly_at_r {
   parameter ob is ship:orbit.
@@ -57,6 +48,23 @@ function mean_anomaly_at_t { // return [0, 360)º
   return mod(m, 360). 
 }
 
+// vis-viva equation
+function orbital_speed {
+  parameter orbit_ is ship:orbit.
+  parameter altitude_ is altitude_at(orbit_).
+  // could be a different orbit
+  parameter apo is orbit_:apoapsis.
+  parameter peri is orbit_:periapsis.
+
+  local body_ to orbit_:body.
+  local g to body_:mu.
+  local r_ to body_:radius + altitude_.
+  local a to body:radius + (apo + peri) / 2.
+  return sqrt(g * ((2 / r_) - (1 / a))).
+}
+
+// --- kOS ORBIT HELPERS
+
 // Give us a kOS Orbit object for a given timestamp.
 function orbit_at { // return Orbit
   parameter ob is ship:orbit.
@@ -70,6 +78,23 @@ function orbit_at { // return Orbit
     mean_anomaly_at_t(ob, t),
     t:seconds,
     ob:body).
+}
+
+// What's the altitude of that orbit at time t?
+// This is defined on Orbitables but not Orbits
+function altitude_at { // return m above sea level
+  parameter ob0 is ship:orbit.
+  parameter t is timestamp().
+  local ob to orbit_at(ob0, t).
+  return ob:body:altitudeof(ob:position).
+} 
+
+// Get the body-surface coordinates of the orbit but at time t
+function geoposition_at {
+  parameter ob0 is ship:orbit.
+  parameter t is timestamp().
+  local ob to orbit_at(ob0, t).
+  return ob:body:geopositionof(ob:position).
 }
 
 // Estimate the time since periapsis, given an orbital height.
@@ -94,3 +119,24 @@ function time_to_altitude {
   return dt.
 }
 
+// Get the current Orbit when it reaches the specified altitude.
+// This new object will contain the body-centric position at that time.
+function orbit_at_altitude {
+  parameter orbit_ is ship:orbit.
+  parameter alt_ is 0.
+  local t to time_to_altitude(orbit_, alt_).
+  return orbit_at(orbit_, time:seconds + t).
+}
+
+function time_to_geo_lng {
+  parameter orbit_ is ship:orbit.
+  parameter given_lng is deorbit_lng.
+
+  set geo_pos to orbit_:body:geopositionof(orbit_:position).
+  set d_lng to given_lng - geo_pos:lng.
+  if d_lng < 0 {
+    set d_lng to d_lng + 360.
+  }
+  // not sure this rotation accounting is correct
+  return orbit_:period * (1 + orbit_:period / orbit_:body:rotationperiod) * (d_lng / 360).
+}
