@@ -1,4 +1,5 @@
-clearscreen.
+// clearscreen.
+print "".
 print "== CIRCULARIZE ==".
 
 ///// CIRCULARIZE /////
@@ -72,6 +73,8 @@ lock throttle to 1.
 wait burn_time. 
 lock throttle to 0.
 
+local lng to body:geopositionof(ship:position):lng.
+print "Longitude after circularization is " + round(lng, 3) + "º.".
 print "Burn complete.".
 
 ///// FINISH /////
