@@ -11,8 +11,9 @@ run common.
 print "Orienting to prograde.".
 set warp to 0.
 sas off.
-set pitch to 10.
-lock hdg to heading(90, pitch).
+set pitch to 20.
+
+lock hdg to srfprograde + r(0, pitch, 0).
 lock steering to hdg.
 wait until steering_aligned_to(hdg).
 
@@ -25,15 +26,17 @@ set warp to 2.
 
 print "Waiting for aerodynamic control.".
 until airspeed < 1200 {
-   local t_land to landing_time().
-   local pos to positionat(ship, time:seconds + t_land).
-   local site to ship:body:geopositionof(pos).
-   print "Landing in " + floor(t_land / 60) + ":" + floor(mod(t_land, 60)) + " at (" + round(site:lat,3) + "º, " + round(site:lng, 3) + "º).".
-   if site:lng > -72 {
-     set pitch to min(pitch + 1, 20).
-   } else if site:lng < -77 {
-     set pitch to max(pitch - 1, -20).
+   if periapsis <= 0 {
+     local t_land to landing_time().
+     local pos to positionat(ship, time:seconds + t_land).
+     local site to ship:body:geopositionof(pos).
+     print "Landing in " + floor(t_land / 60) + ":" + floor(mod(t_land, 60)) + " at (" + round(site:lat,3) + "º, " + round(site:lng, 3) + "º).".
    }
+   //if site:lng > -72 {
+   //  set pitch to min(pitch + 1, 20).
+   //} else if site:lng < -77 {
+   //  set pitch to max(pitch - 1, 0).
+   //}
    wait 5.
 }
 
