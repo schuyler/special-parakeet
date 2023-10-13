@@ -1,5 +1,7 @@
 clearscreen.
 
+run common.
+
 // === INTERCEPT CALCULATION ===
 
 function separation_at {
@@ -28,7 +30,7 @@ function intercept {
   print "Velocity: " + dv + " = " + dv:mag + " m/s.".
 
   local t is time:seconds + dt.
-  local nd is node_from_velocity(dv).
+  local nd is node_from_velocity(dv, t).
   add(nd).
 }
 
