@@ -1,6 +1,8 @@
 parameter target_apoapsis is 72000.
 parameter speed_factor is 28. // this should be based on TWR probably
 
+local start_time to time:seconds.
+
 // clearscreen.
 print "".
 print "== SSTO LAUNCH ==".
@@ -127,7 +129,7 @@ until pitch >= ascent or eta:apoapsis >= 30 {
 }
 set final_pitch to pitch.
 
-// wait 5. // settle down
+wait 5. // settle down
 wait until eta:apoapsis > 30.
 
 print "Pitching down at " + round(altitude) + "m.".
@@ -175,3 +177,9 @@ unlock steering.
 wait until kuniverse:timewarp:issettled.
 
 run circularize.
+
+panels on.
+
+local lng to body:geopositionof(ship:position):lng.
+print "Longitude after circularization: " + round(lng, 3) + "º.".
+print "Time to orbit: " + round(time:seconds - start_time) + "s.".
