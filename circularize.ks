@@ -81,4 +81,5 @@ print "Burn complete.".
 
 unlock steering.
 unlock throttle.
+panels on.
 wait 1.
