@@ -1,11 +1,5 @@
 parameter target_apoapsis is 72000.
-parameter v_spd_factor is 17. // this should be based on TWR probably
-parameter v_spd_factor2 is 4.
-parameter v_spd_max is 215.
-
-// 17, 4, 225 == 568 m/s incl cargo, on orbit
-// 17, 4, 215 == 600 m/s unloaded, on orbit
-// 17, 4, 200 == 485 m/s incl cargo, on orbit
+parameter twr_factor is 13.33.
 
 local start_time to time:seconds.
 
@@ -48,18 +42,18 @@ wait until altitude > 250.
 
 print "Beginning dry mode ascent.".
 
-set pitch to 10.
+
+lock twr to ship:availablethrust / (ship:mass * constant:g0).
+lock pitch to twr_factor * twr.
 lock hdg to heading(dir, pitch).
+
 wait until vang(hdg:vector, ship:facing:vector) < 1.
 
-set pid to pidloop(0.002, 0, 0).
+//set pid to pidloop(0.002, 0, 0).
 
-set deadband to 0.1.
 set max_speed to airspeed.
 set max_vertical_speed to verticalspeed.
-lock vertical_target to max_speed / v_spd_factor.
 
-set pitch to 8.
 when airspeed < max_speed and verticalspeed < max_vertical_speed then {
   print "Switching engines to wet mode at " + round(altitude) + "m.".
   set ag1 to true.
@@ -69,10 +63,8 @@ when airspeed < max_speed and verticalspeed < max_vertical_speed then {
     when airspeed < max_speed and verticalspeed < max_vertical_speed then {
       print "Activating rocket engines at " + round(altitude) + "m.".
       stage.
-      lock vertical_target to min(airspeed / v_spd_factor2, v_spd_max).
-      set pitch to 21.
-      when altitude > 15000 then {
-        lock pitch to min(21, 21 - (eta:apoapsis - 30) / 2).
+      lock pitch to min(21, 21 - (eta:apoapsis - 30) / 2).
+      when altitude > 20000 then {
 	set ag2 to true.
       }
     }
@@ -82,17 +74,15 @@ when airspeed < max_speed and verticalspeed < max_vertical_speed then {
 lock prograde_angle to 90 - vang(ship:prograde:vector, up:vector).
 
 until apoapsis > target_apoapsis or pitch <= prograde_angle {
-  //set pid:setpoint to vertical_target.
+  //set pid:setpoint to ???
   //set pitch to pitch + pid:update(time:seconds, ship:verticalspeed).
-  set twr to ship:availablethrust / (ship:mass * constant:g0).
   print "Max speed: " + round(max_speed, 1) + " m/s   " at (1, 20).
   print "V speed:   " + round(verticalspeed, 1) + " m/s   " at (1, 21).
-  print "V tgt:     " + round(vertical_target, 1) + " m/s   " at (1, 22).
   print "Pitch:     " + round(pitch, 1) + "º   " at (1, 23).
   print "TWR:       " + round(twr, 3) at (1, 24).
-  print "Kp:        " + round(pid:kp, 4) + "     " at (1, 26).
-  print "Ki:        " + round(pid:ki, 4) + "     " at (1, 27).
-  print "Kd:        " + round(pid:kd, 4) + "     " at (1, 28).
+  //print "Kp:        " + round(pid:kp, 4) + "     " at (1, 26).
+  //print "Ki:        " + round(pid:ki, 4) + "     " at (1, 27).
+  //print "Kd:        " + round(pid:kd, 4) + "     " at (1, 28).
   if max_speed <= airspeed {
     set max_speed to airspeed.
   } 
