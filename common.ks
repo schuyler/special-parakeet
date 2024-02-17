@@ -94,7 +94,8 @@ function node_from_velocity {
 
 function steering_aligned_to {
   parameter dv.
-  return vang(dv:vector, ship:facing:vector) < 0.25.
+  parameter angle is 0.25.
+  return vang(dv, ship:facing:vector) < angle.
 }
 
 function execute_node {
