@@ -14,6 +14,13 @@ function mean_anomaly_at_t { // return [0, 360)º
   return mod(m, 360). 
 }
 
+// We going up or down?
+function is_ascending {
+  parameter ob is ship:orbit.
+  parameter t is timestamp().
+  return mean_anomaly_at_t(t) < 180. // before apoapsis
+}
+
 // Estimate the time since periapsis.
 //
 function time_since_periapsis {
@@ -82,9 +89,10 @@ function mean_anomaly_at_r {
 // Estimate the time to reach a given orbital height from the current orbit.
 function time_to_altitude {
   parameter ob is ship:orbit.
-  parameter target_alt is ob:apoapsis.
+  parameter target_alt is ob:periapsis.
+  parameter ascending is false.
 
-  // Get the mean anomaly at the current time.
+  // Get the mean anomaly at the specified time.
   local m0 to mean_anomaly_at_t(ob).
     
   // Estimate the mean anomaly at the future altitude. There will be two such
@@ -93,12 +101,9 @@ function time_to_altitude {
   local r1 to target_alt + ob:body:radius.
   local ms1 to mean_anomaly_at_r(ob, r1).
 
-  // If the current mean anomaly is less than _or_ greater than _both_ of the
-  // possible mean anomalies of the future altitude, pick the smaller one,
-  // otherwise use the larger. It helps to visualize this on an ellipse and
-  //
+  // We want the altitude given before or after apoapsis?
   local m1 to 0.
-  if m0 > max(ms1[0], ms1[1]) or m0 < min(ms1[0], ms1[1])  {
+  if ascending {
     set m1 to ms1[0].
   } else {
     set m1 to ms1[1].
@@ -124,12 +129,15 @@ function time_to_meridian {
   parameter given_lng is 0.
 
   local geo_pos to orbit_:body:geopositionof(orbit_:position).
+  print "given: " + round(given_lng, 3) + " pos: " + round(geo_pos:lng, 3).
   local d_lng to given_lng - geo_pos:lng.
   if d_lng < 0 {
-    local d_lng to d_lng + 360.
+    set d_lng to d_lng + 360.
   }
+  print "d_lng = " + round(d_lng, 3).
   // not sure this rotation accounting is correct
   local dt to orbit_:period * (1 + orbit_:period / orbit_:body:rotationperiod) * (d_lng / 360).
+  print "meridian reached in " + round(dt, 3) + "s".
   return timespan(dt).  
 }
 
@@ -171,13 +179,4 @@ function geoposition_at {
   parameter t is timestamp().
   local ob to orbit_at(ob0, t).
   return ob:body:geopositionof(ob:position).
-}
-
-// Get the current Orbit when it reaches the specified altitude.
-// This new object will contain the body-centric position at that time.
-function orbit_at_altitude {
-  parameter orbit_ is ship:orbit.
-  parameter alt_ is 0.
-  local t to time_to_altitude(orbit_, alt_).
-  return orbit_at(orbit_, timestamp() + t).
 }
