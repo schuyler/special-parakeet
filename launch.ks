@@ -1,5 +1,5 @@
 clearscreen.
-parameter level_off is 25000.
+parameter level_off is 40000.
 print("= LAUNCH = ").
 
 sas off.
@@ -17,13 +17,26 @@ when ship:altitude > 45000 then {
 
 when ship:apoapsis > 75000 then {
   lock throttle to 0.
+  lock steering to ship:prograde.
 }
 
-wait until ship:altitude > 70000.
+until ship:altitude > 70000 {
+  if ship:apoapsis < 75000 {
+    lock throttle to 1.
+  } else {
+    lock throttle to 0.
+  }
+  wait 0.1.
+}
+
+set warp to 0.
+wait until kuniverse:timewarp:issettled.
+
 unlock throttle.
 unlock steering.
+
 panels on.
 antenna on.
 
-set warp to 0.
 run circularize.
+run next.

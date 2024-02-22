@@ -157,7 +157,7 @@ wait 1.
 
 /// Keep apoapsis suborbital.
 
-until altitude >= 69000 {
+until altitude >= 70000 {
   if apoapsis < 70000 {
     print "Burning to keep apoapsis above atmospheric boundary.".
     lock throttle to 1.
@@ -176,9 +176,10 @@ unlock steering.
 
 wait until kuniverse:timewarp:issettled.
 
-run circularize.
-
 panels on.
+
+run circularize.
+run next.
 
 local lng to body:geopositionof(ship:position):lng.
 print "Longitude after circularization: " + round(lng, 3) + "º.".
