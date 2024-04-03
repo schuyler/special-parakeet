@@ -83,8 +83,14 @@ sas off.
 //   - Set throttle to 0.
 //   - Ideally use https://ksp-kos.github.io/KOS/structures/vessels/bounds.html to determine contact
 
-set safety_margin to 1.05.
-set braking_finish to 50. // meters
+local g_asl is body:mu / (body:radius ^ 2).
+local twr_asl is ship:availablethrust / (ship:mass * g_asl).
+
+set safety_margin to 1 + (1.0 / twr_asl). // 1.05.
+
+print "Safety margin: " + round(safety_margin, 3). 
+
+set braking_finish to 100. // meters
 set vertical_descent to 15. // meters
 set landing_speed to 7.
 
@@ -100,13 +106,13 @@ when verticalspeed < -1 then {
   lock steering to ship:srfretrograde.
 }
 
-when time:seconds > burn_start - 45 then {
+when time:seconds > burn_start - 60 then {
   set warp to 0.
 }
 
-when time:seconds > burn_start - 10 then {
-  set burn_start to burn_start_for(braking_finish).
-}
+//when time:seconds > burn_start - 10 then {
+//  set burn_start to burn_start_for(braking_finish).
+//}
 
 when time:seconds >= burn_start then {
   set state to "Braking Burn".
@@ -114,14 +120,13 @@ when time:seconds >= burn_start then {
 
   local g is body:mu / (body:distance ^ 2).
   local twr is ship:availablethrust / (ship:mass * g).
-  local max_acc is ship:availablethrust / ship:mass. 
 
-  lock target_speed to landing_speed + sqrt(2 * (ship:availablethrust - g) * alt:radar).
+  lock target_speed to landing_speed. // + sqrt(2 * (ship:availablethrust - g) * alt:radar).
   when airspeed <= target_speed then {
     set state to "Final Free Fall".
     lock throttle to 0.
 
-    set burn_start to burn_start_for(braking_finish).
+    //set burn_start to burn_start_for(braking_finish).
   
     when time:seconds >= burn_start or alt:radar <= vertical_descent then {
       set state to "Landing Burn".
@@ -152,6 +157,11 @@ until alt:radar <= 2 {
   print "Radar: " + round(alt:radar) + " m " at (1,27).
   print "Above terrain: " + round(above_surface(time:seconds)) + " m " at (1,28).
   //print "Terrain height ASL: " + round(ship:geoposition:terrainheight) + " m " at (1,29).
+  if state = "Initial Free Fall" {
+    set burn_start to burn_start_for(braking_finish).
+  } else {
+    set burn_start to burn_start_for(vertical_descent).
+  }
   wait 0.25.
 }
 
