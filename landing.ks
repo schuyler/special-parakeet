@@ -23,7 +23,7 @@ function time_to_altitude {
   local start is time:seconds.
   local h is ship:altitude.
   local t is 0.
-  local step is 1. //(h / -ship:verticalspeed) / 200.
+  local step is 1. //(h / -ship:verticalspeed) / 100.
   until h <= target {
     set h to above_surface(start + t).
     set t to t + step.
@@ -103,28 +103,23 @@ if hasnode {
 }
 
 //local safety_margin to 1.01.
-local throttle_start to 0.99.
-//local throttle_stop to 0.50.
+local throttle_start to 0.999.
+local throttle_stop to 0.50.
 
-set braking_finish to 0. // meters
-set vertical_descent to 5. // meters
+set braking_finish to 250. // meters
+set vertical_descent to 25. // meters
 set landing_speed to 5.
 set warp_margin to 60.
 
 local state to "Initial Free Fall".
-local target_altitude to braking_finish.
+local target_altitude to vertical_descent.
 local throttle_pc to 0.
 
+sas off.
+lock steering to ship:srfretrograde * r(0,0,1).
+
 set burn_start to burn_start_for(target_altitude, 2).
-
-when time:seconds < burn_start - warp_margin then {
-  set warp to 3.
-}
-
-when verticalspeed < -1 then {
-  set warp to 0.
-  sas off.
-  lock steering to ship:srfretrograde * r(0,0,1).
+if time:seconds < burn_start - warp_margin {
   set warp to 3.
   when time:seconds > burn_start - warp_margin then {
     set warp to 0.
@@ -134,26 +129,22 @@ when verticalspeed < -1 then {
 lock g to body:mu / (body:distance ^ 2).
 lock twr to ship:availablethrust / (ship:mass * g).
 lock throttle_pc to throttle_needed(target_altitude).
-lock target_speed to landing_speed. // + sqrt(2 * (ship:availablethrust - g) * alt:radar).
+lock target_speed to landing_speed + sqrt(2 * (ship:availablethrust - g) * alt:radar).
 
 when throttle_pc >= throttle_start then {
   set state to "Braking Burn".
   lock throttle to throttle_pc.
 
-  when alt:radar <= braking_finish then {
-    set target_altitude to vertical_descent.
-  }
-
-  when airspeed <= target_speed then {
-    set state to "Final Descent".
-    set target_altitude to 0.
+  when airspeed <= target_speed or throttle_pc < throttle_stop then {
+    set state to "Free Fall".
     lock throttle to 0.
     when throttle_pc >= throttle_start then {
-      lock throttle to min(throttle_pc, 1/twr).
+      set state to "Final Descent".
+      lock throttle to max(throttle_pc, 1/twr).
     }
   }
 
-  when verticalspeed > -0.1 or alt:radar <= 3 then {
+  when verticalspeed > -0.1 then {
     set state to "Landed".
     lock throttle to 0.
   }
@@ -178,7 +169,7 @@ until alt:radar <= 2 {
 }
 
 lock throttle to 0.
-wait 5.
 unlock throttle.
 unlock steering.
 sas on.  
+// wait 5.
