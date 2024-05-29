@@ -21,14 +21,14 @@ function _time_to_surface {
 function time_to_altitude {
   parameter target is 0.
   local start is time:seconds.
-  local t is 0.
   local h is ship:altitude.
-  local step is h / (-ship:verticalspeed * 10).
+  local t is 0.
+  local step is 1. //(h / -ship:verticalspeed) / 200.
   until h <= target {
     set h to above_surface(start + t).
     set t to t + step.
   }
-  return t - step / 2.
+  return t - step.
 }
 
 function simple_burn_time {
@@ -98,12 +98,16 @@ if twr_asl = 0 {
   print("==== WARNING: Engine thrust is zero. Do you need to stage? ====").
 }
 
-local safety_margin to 1.
-local throttle_start to 0.95.
-local throttle_stop to 0.70.
+if hasnode {
+  remove nextnode.
+}
 
-set braking_finish to 100. // meters
-set vertical_descent to 15. // meters
+//local safety_margin to 1.01.
+local throttle_start to 0.99.
+//local throttle_stop to 0.50.
+
+set braking_finish to 0. // meters
+set vertical_descent to 5. // meters
 set landing_speed to 5.
 set warp_margin to 60.
 
@@ -118,38 +122,38 @@ when time:seconds < burn_start - warp_margin then {
 }
 
 when verticalspeed < -1 then {
+  set warp to 0.
   sas off.
   lock steering to ship:srfretrograde * r(0,0,1).
-}
-
-when time:seconds > burn_start - warp_margin then {
-  set warp to 0.
+  set warp to 3.
+  when time:seconds > burn_start - warp_margin then {
+    set warp to 0.
+  }
 }
 
 lock g to body:mu / (body:distance ^ 2).
 lock twr to ship:availablethrust / (ship:mass * g).
-lock throttle_pc to min(max(throttle_needed(target_altitude), 1.0/twr), 1).
+lock throttle_pc to throttle_needed(target_altitude).
 lock target_speed to landing_speed. // + sqrt(2 * (ship:availablethrust - g) * alt:radar).
 
-when throttle_pc >= 1.0 / safety_margin then {
+when throttle_pc >= throttle_start then {
   set state to "Braking Burn".
   lock throttle to throttle_pc.
 
   when alt:radar <= braking_finish then {
     set target_altitude to vertical_descent.
-    if airspeed >= target_speed {
-      set state to "Landing Burn".
-      lock throttle to min(throttle_pc * 2, 1).
-    }
   }
 
   when airspeed <= target_speed then {
     set state to "Final Descent".
     set target_altitude to 0.
-    lock throttle to throttle_pc.
+    lock throttle to 0.
+    when throttle_pc >= throttle_start then {
+      lock throttle to min(throttle_pc, 1/twr).
+    }
   }
 
-  when verticalspeed > -0.1 or alt:radar <= 5 then {
+  when verticalspeed > -0.1 or alt:radar <= 3 then {
     set state to "Landed".
     lock throttle to 0.
   }
