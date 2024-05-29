@@ -23,11 +23,12 @@ function time_to_altitude {
   local start is time:seconds.
   local t is 0.
   local h is ship:altitude.
+  local step is h / (-ship:verticalspeed * 10).
   until h <= target {
     set h to above_surface(start + t).
-    set t to t + h/5000.
+    set t to t + step.
   }
-  return t - h/5000.
+  return t - step / 2.
 }
 
 function simple_burn_time {
@@ -46,15 +47,22 @@ function simple_burn_time {
 }
 
 function burn_start_for {
-  parameter target_alt is 0.
-  parameter safety_margin is 1.05.
+  parameter target_alt.
+  parameter margin.
   local target_time to time:seconds + time_to_altitude(target_alt).
   local dv to velocityat(ship, target_time):surface:mag.
+  print("dv needed: " + round(dv, 1) + " m/s").
   local burn_time to simple_burn_time(dv).
-  return target_time - (burn_time * safety_margin) / 2.
+  return target_time - (burn_time * margin) / 2.
 }
 
-sas off.
+function throttle_needed {
+  parameter target_alt.
+  local remaining_time is time_to_altitude(target_alt).
+  local needed_time is simple_burn_time(ship:velocity:surface:mag).
+  local ratio is needed_time / max(remaining_time, 1).
+  return max(ratio, 0).
+}
 
 // State 1: Initial free fall
 // State 2: Braking burn
@@ -86,63 +94,64 @@ sas off.
 local g_asl is body:mu / (body:radius ^ 2).
 local twr_asl is ship:availablethrust / (ship:mass * g_asl).
 
-set safety_margin to 1 + (1.0 / twr_asl). // 1.05.
+if twr_asl = 0 {
+  print("==== WARNING: Engine thrust is zero. Do you need to stage? ====").
+}
 
-print "Safety margin: " + round(safety_margin, 3). 
+local safety_margin to 1.
+local throttle_start to 0.95.
+local throttle_stop to 0.70.
 
 set braking_finish to 100. // meters
 set vertical_descent to 15. // meters
-set landing_speed to 7.
+set landing_speed to 5.
+set warp_margin to 60.
 
 local state to "Initial Free Fall".
+local target_altitude to braking_finish.
+local throttle_pc to 0.
 
-set burn_start to burn_start_for(braking_finish).
+set burn_start to burn_start_for(target_altitude, 2).
 
-when time:seconds < burn_start - 60 then {
+when time:seconds < burn_start - warp_margin then {
   set warp to 3.
 }
 
 when verticalspeed < -1 then {
-  lock steering to ship:srfretrograde.
+  sas off.
+  lock steering to ship:srfretrograde * r(0,0,1).
 }
 
-when time:seconds > burn_start - 60 then {
+when time:seconds > burn_start - warp_margin then {
   set warp to 0.
 }
 
-//when time:seconds > burn_start - 10 then {
-//  set burn_start to burn_start_for(braking_finish).
-//}
+lock g to body:mu / (body:distance ^ 2).
+lock twr to ship:availablethrust / (ship:mass * g).
+lock throttle_pc to min(max(throttle_needed(target_altitude), 1.0/twr), 1).
+lock target_speed to landing_speed. // + sqrt(2 * (ship:availablethrust - g) * alt:radar).
 
-when time:seconds >= burn_start then {
+when throttle_pc >= 1.0 / safety_margin then {
   set state to "Braking Burn".
-  lock throttle to 1.
+  lock throttle to throttle_pc.
 
-  local g is body:mu / (body:distance ^ 2).
-  local twr is ship:availablethrust / (ship:mass * g).
-
-  lock target_speed to landing_speed. // + sqrt(2 * (ship:availablethrust - g) * alt:radar).
-  when airspeed <= target_speed then {
-    set state to "Final Free Fall".
-    lock throttle to 0.
-
-    //set burn_start to burn_start_for(braking_finish).
-  
-    when time:seconds >= burn_start or alt:radar <= vertical_descent then {
+  when alt:radar <= braking_finish then {
+    set target_altitude to vertical_descent.
+    if airspeed >= target_speed {
       set state to "Landing Burn".
-      lock throttle to 1.0.
-
-      when airspeed <= landing_speed then {
-	set state to "Final Descent".
-        set twr to ship:availablethrust / (ship:mass * g).
-	lock throttle to 1 / twr.
-      }
-
-      when verticalspeed > -0.1 or alt:radar <= 2 then {
-	set state to "Landed".
-	lock throttle to 0.
-      }
+      lock throttle to min(throttle_pc * 2, 1).
     }
+  }
+
+  when airspeed <= target_speed then {
+    set state to "Final Descent".
+    set target_altitude to 0.
+    lock throttle to throttle_pc.
+  }
+
+  when verticalspeed > -0.1 or alt:radar <= 5 then {
+    set state to "Landed".
+    lock throttle to 0.
   }
 }
 
@@ -157,11 +166,10 @@ until alt:radar <= 2 {
   print "Radar: " + round(alt:radar) + " m " at (1,27).
   print "Above terrain: " + round(above_surface(time:seconds)) + " m " at (1,28).
   //print "Terrain height ASL: " + round(ship:geoposition:terrainheight) + " m " at (1,29).
-  if state = "Initial Free Fall" {
-    set burn_start to burn_start_for(braking_finish).
-  } else {
-    set burn_start to burn_start_for(vertical_descent).
-  }
+  //set throttle_pc to throttle_needed(target_altitude).
+  print "Throttle needed: " + round(throttle_pc, 3) + "       " at (1,29).
+  print "Time to target altitude: " + round(time_to_altitude(target_altitude), 1) + "     " at (1,30).
+  //set burn_start to burn_start_for(target_altitude, safety_margin).
   wait 0.25.
 }
 
