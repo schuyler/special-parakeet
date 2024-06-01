@@ -54,7 +54,7 @@ local burn_start to time.
 
 if peri > 0 {
   local burn_time to burn_duration(horizontalVelocity:mag).
-  set burn_start to time + (time_to_altitude(orbit, peri) - burn_time / 2).
+  set burn_start to time + (time_to_altitude(orbit, peri) - burn_time).
 
   if time < burn_start - warp_margin {
     set warp to 3.
