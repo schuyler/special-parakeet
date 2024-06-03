@@ -22,26 +22,29 @@ function minimize {
   return (a + b) / 2.
 }
 
-// Rocket equation
-function burn_duration {
-  parameter delta_v.
-
-  // determine engine ISP
+// Find the current engine ISP
+function engine_isp {
   local eng_list to list().
   list engines in eng_list.
 
   for en_ in eng_list {
-    // TODO: use en_:ignition instead
-    if en_:vacuumisp > 0 {
-	  set en to en_.
+    if en_:availablethrust > 0 {
+      return en_:isp.
     }
   }
+  return 0.
+}
 
+// Rocket equation
+function burn_duration {
+  parameter delta_v.
+
+  local isp is engine_isp().
   // TBD: work through the Rocket Equation and confirm this math
-  local thrust to ship:maxthrustat(0).
+  local thrust to ship:availablethrust.
   local wMass to ship:mass.
-  local dMass to wMass / (constant:E ^ (delta_v / (en:isp * constant:g0))).
-  local flowRate to thrust / (en:isp * constant:g0).
+  local dMass to wMass / (constant:E ^ (delta_v / (isp * constant:g0))).
+  local flowRate to thrust / (isp * constant:g0).
   local burn_time to (wMass - dMass) / flowRate.
   return burn_time.
 }
