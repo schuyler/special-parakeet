@@ -1,3 +1,4 @@
+@lazyglobal off.
 parameter landing_speed is 5.
 parameter burn_margin is 1.01.
 parameter warp_margin is 30.
@@ -35,6 +36,7 @@ function perform_landing {
   }
 
   sas off.
+  wait until verticalspeed < 0.
   lock steering to ship:srfretrograde * r(0,0,0).
 
   local state to "Initial Free Fall".
@@ -42,10 +44,8 @@ function perform_landing {
   local time_to_periapsis to 0.
   local burn_start to 0.
   local g to 0.
-  local free_fall_time to 0.
 
   lock g to body:mu / (body:distance ^ 2).
-  //lock free_fall_time to sqrt(alt:radar / (2 * g)).
   lock landing_burn_duration to burn_duration(ship:velocity:surface:mag + sqrt(2 * alt:radar * g)).
   lock burn_start to time_to_surface(time:seconds + landing_burn_duration / 2 * burn_margin).
   lock time_to_periapsis to orbit:eta:periapsis - landing_burn_duration / 2.
@@ -61,10 +61,10 @@ function perform_landing {
   when burn_start <= 0 or time_to_periapsis <= 0 then {
     set state to "Braking Burn".
     lock throttle to 1.
-    lock target_speed to landing_speed.
     gear on.
 
-    when airspeed < target_speed then {
+    //when vang(ship:up:vector, ship:srfretrograde:vector) <= 89.0 then {
+    when groundspeed <= landing_speed then {
       set state to "Free Fall".
       lock throttle to 0.
       
@@ -73,14 +73,15 @@ function perform_landing {
 	lock throttle to 1.
 
 	when airspeed <= landing_speed then {
-	  local twr_ is engine_twr().
+	  set state to "Landing Burn".
+	  local twr_ is ship:availablethrust / (ship:mass * g).
 	  lock steering to ship:up * r(0,0,0).
 	  lock throttle to (airspeed / landing_speed) * 0.99 / twr_.
 	}
       }
     }
 
-    when alt:radar <= 2 then {
+    when alt:radar <= 5 then {
       set state to "Landed".
       lock throttle to 0.
     }
