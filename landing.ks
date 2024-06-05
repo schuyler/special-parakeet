@@ -16,8 +16,8 @@ function time_to_surface {
   local up_v to (pos - body:position):normalized.
   local v_ to vdot(surface_v, up_v) * up_v.
   local v_mag to v_:mag.
-  local g_ is body:mu / (body:distance ^ 2).
-  return (-v_mag + sqrt(v_mag ^ 2 + 2 * g_ * h)) / g_.
+  local g_ is body:mu / (body:radius ^ 2).
+  return (-v_mag + sqrt(max(v_mag ^ 2 + 2 * g_ * h, 0))) / g_.
 }
 
 function perform_landing {
@@ -66,6 +66,7 @@ function perform_landing {
     //when vang(ship:up:vector, ship:srfretrograde:vector) <= 89.0 then {
     when groundspeed <= landing_speed then {
       set state to "Free Fall".
+      set burn_margin to 1.
       lock throttle to 0.
       
       when burn_start <= 0 then {
@@ -98,7 +99,7 @@ function perform_landing {
     wait 0.25.
   }
 
-  lock steering to ship:up.
+  lock steering to heading(0, 90).
   lock throttle to 0.
   wait 5.
 
