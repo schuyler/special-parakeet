@@ -7,9 +7,9 @@ print "== AIRLESS LAUNCH ==".
 function find_safe_ascent {
   parameter pos is ship:position.
   parameter hdg is 90.
-  parameter limit is 1000.
+  parameter limit is 5000.
   parameter margin is 0.
-  parameter d_step is 100.
+  parameter d_step is 200.
 
   local alt_ to ship:altitude.
   local min_angle to 0.
@@ -37,14 +37,18 @@ function perform_launch {
 
   local g to body:mu / (body:radius ^ 2).
   local twr is ship:availablethrust / (ship:mass * g).
+  local pitch to 0.
+  local ascent to 0.
 
   sas off.
-  lock pitch to find_safe_ascent(positionat(ship, time:seconds + orbit:eta:apoapsis), hdg).
-  lock steering to ship:up.
+  lock ascent to find_safe_ascent(positionat(ship, time:seconds + orbit:eta:apoapsis), hdg).
+  lock pitch to ascent.
+  lock steering to body:up.
   lock throttle to 1.
   when pitch <= min_pitch and verticalspeed > 10 then {
     lock throttle to 0.
-    lock pitch to min(max(find_safe_ascent(ship:position, hdg), min_pitch), 90).
+    lock ascent to find_safe_ascent(ship:position, hdg).
+    lock pitch to min(ascent + min_pitch, 90).
     lock steering to heading(hdg, pitch).
     when pitch <= min_pitch and vang(ship:facing:vector, steering:vector) <= 5 then {
       lock throttle to 1.
@@ -53,7 +57,8 @@ function perform_launch {
   }
   until ship:apoapsis >= target_apo {
     print "Pitch: " + round(pitch, 1) + "º." at (1, 25).
-    print "TWR: " + round(twr, 1) + "." at (1, 26).
+    print "Ascent: " + round(ascent, 1) + "º." at (1, 26).
+    print "TWR: " + round(twr, 1) + "." at (1, 27).
     wait 0.25.
   }
   
