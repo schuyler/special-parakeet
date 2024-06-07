@@ -188,6 +188,19 @@ function execute_node {
 
 // === LANDING CALCULATION ===
 
+function time_to_surface {
+  parameter t.
+  local pos is positionat(ship, t).
+  local alt_ is (pos - body:position):mag - body:radius.
+  local h is alt_ - body:geopositionof(pos):terrainheight.
+  local surface_v is velocityat(ship, t):surface.
+  local up_v to (pos - body:position):normalized.
+  local v_ to vdot(surface_v, up_v) * up_v.
+  local v_mag to v_:mag.
+  local g_ is body:mu / (body:radius ^ 2).
+  return (-v_mag + sqrt(max(v_mag ^ 2 + 2 * g_ * h, 0))) / g_.
+}
+
 function above_terrain {
   parameter t.
   local pos is positionat(ship, time:seconds + t).
