@@ -15,7 +15,7 @@ set pitch to 20.
 
 lock hdg to srfprograde + r(0, pitch, 0).
 lock steering to hdg.
-wait until steering_aligned_to(hdg).
+wait until steering_aligned_to(hdg:vector).
 
 set warp to 2.
 print "Warping to atmospheric re-entry.".
