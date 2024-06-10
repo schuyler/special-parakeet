@@ -1,10 +1,12 @@
 parameter target_apoapsis is 72000.
 parameter twr_factor is 13.33.
-parameter rocket_ascent is 21.
+parameter rocket_ascent is 25.
 
 local start_time to time:seconds.
 local eng_list is list().
 list engines in eng_list.
+
+run "aero".
 
 clearscreen.
 print "".
@@ -63,31 +65,31 @@ when vang(hdg:vector, ship:facing:vector) < 1 then {
 
   when airspeed < max_speed and verticalspeed < max_vertical_speed then {
     print "Switching engines to wet mode at " + round(altitude) + "m.".
+    // TODO: Change this to iterate through the engines and flip any with modes
     set ag1 to true.
     local wet_mode to time:seconds.
 
     when time:seconds > wet_mode + 2 and verticalspeed < 10 then { 
       print "Activating rocket engines at " + round(altitude) + "m.".
       stage.
-      lock pitch to 5.
       set rocket_start to time:seconds.
-      when airspeed > 550 then {
-      //when time:seconds > rocket_start + 5 and ship:availablethrust <= max_thrust then {
-	lock pitch to 25 * (1 - altitude / 40000).
-	when altitude > 20000 then {
-	  set ag2 to true.
-	}
+      lock pitch to 5.
+      when mach_number() > 3 and ship:availablethrust <= max_thrust then {
+	// Robin: 1340m/s on orbit (25º, 1 - altitude / 40000)
+	//        1336m/s (21º, 1 - altitude / 40000)
+	lock pitch to max(prograde_angle, rocket_ascent * (1 - altitude / 40000)).
       }
     }
   }
 }
 
-until apoapsis > target_apoapsis or pitch <= prograde_angle {
+until apoapsis > target_apoapsis {
+  print "Mach:      " + round(mach_number(), 3):tostring:padleft(6)  at (1, 19).
   print "Max speed: " + round(max_speed, 1):tostring:padleft(6) + " m/s   " at (1, 20).
   print "V speed:   " + round(verticalspeed, 1):tostring:padleft(6) + " m/s   " at (1, 21).
   print "Pitch:     " + round(pitch, 1):tostring:padleft(6) + "º   " at (1, 23).
   print "TWR:       " + round(twr, 3):tostring:padleft(6) at (1, 24).
-  print "Apoapsis:  " + round(apoapsis):tostring:padleft(6) + "m" at (1,25).
+  print "Apoapsis:  " + round(apoapsis):tostring:padleft(6) + " m" at (1,25).
   local p to body:atm:altitudepressure(altitude).
   local n to 27.
   for en in eng_list {
