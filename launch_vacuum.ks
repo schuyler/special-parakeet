@@ -8,8 +8,8 @@ run "common".
 function find_safe_ascent {
   parameter pos is ship:position.
   parameter hdg is 90.
-  parameter limit is 20000.
-  parameter margin is 0.
+  parameter limit is 50000.
+  parameter margin is 50.
   parameter d_step is 2.
   parameter d_start is 20.
 
@@ -23,7 +23,7 @@ function find_safe_ascent {
     local alt_ to (pos - body:position):mag - body:radius.
     local geo to body:geopositionof(pos).
     local h to alt_ - (geo:terrainheight + margin).
-    local angle to mod(vang(pos, geo:position), 90).
+    local angle to mod(vang(pos, geo:altitudeposition(geo:terrainheight + margin)), 90).
     //print round(d) + " " + round(angle, 1) + " " + round(h) + " " + round(clearance).
     if h < clearance {
       set clearance to h.
@@ -61,15 +61,27 @@ function perform_launch {
     when vang(ship:facing:vector, steering:vector) <= 5 then {
       lock throttle to 1.
       lock steering to heading(hdg, pitch) * r(0,0,0).
+      when ship:apoapsis >= target_apo then {
+	lock throttle to 0.
+	when ascent > 0 then {
+	  when vang(ship:facing:vector, steering:vector) <= 5 then {
+	    lock throttle to 1.
+	  }
+	  when ascent = 0 then {
+	    lock throttle to 0.
+	  }
+	  return true.
+	}
+      }
     }
   }
-  until ship:apoapsis >= target_apo {
+  until alt:radar > 5000 {
     print "Min pitch: " + round(min_pitch, 1) + "º." at (1, 24).
-    print "Pitch: " + round(pitch, 1) + "º." at (1, 25).
-    print "Ascent: " + round(ascent, 1) + "º." at (1, 26).
+    print "Ascent: " + round(ascent, 1) + "º." at (1, 25).
+    print "Pitch: " + round(pitch, 1) + "º." at (1, 26).
     print "TWR: " + round(twr, 1) + "." at (1, 27).
     print "Apoapsis: " + round(ship:apoapsis) at (1, 28).
-    print "Target: " + round(target_apo) at (1, 29).
+    print "Radar: " + round(alt:radar) at (1, 29).
     wait 0.25.
   }
   
