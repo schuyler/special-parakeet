@@ -17,6 +17,19 @@ lock hdg to srfprograde + r(0, pitch, 0).
 lock steering to hdg.
 wait until steering_aligned_to(hdg:vector).
 
+print "Disabling rocket engines and re-enabling jet engines.".
+local en_list is list().
+list engines in en_list.
+for en in en_list {
+  if not en:ignition {
+    en:activate().
+  }
+  if en:ignition and en:availablethrust > 0 {
+    en:shutdown().
+  }
+}
+
+
 set warp to 2.
 print "Warping to atmospheric re-entry.".
 
@@ -30,7 +43,7 @@ until airspeed < 1200 {
      local t_land to landing_time().
      local pos to positionat(ship, time:seconds + t_land).
      local site to ship:body:geopositionof(pos).
-     print "Landing in " + floor(t_land / 60) + ":" + floor(mod(t_land, 60)) + " at (" + round(site:lat,3) + "º, " + round(site:lng, 3) + "º).".
+     print "Landing in " + floor(t_land / 60) + ":" + floor(mod(t_land, 60)) + " at (" + round(site:lat,3) + "º, " + round(site:lng, 3) + "º)." at (1,20).
    }
    //if site:lng > -72 {
    //  set pitch to min(pitch + 1, 20).
