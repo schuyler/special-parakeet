@@ -1,6 +1,6 @@
 parameter target_apoapsis is 72000.
 parameter twr_factor is 13.33.
-parameter rocket_ascent is 25.
+parameter rocket_ascent is 23.
 
 local start_time to time:seconds.
 local eng_list is list().
