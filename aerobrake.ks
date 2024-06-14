@@ -24,6 +24,11 @@ print "Aerobraking start.".
 set start_time to time:seconds.
 set warpmode to "physics".
 set warp to 2.
+
+when apoapsis < 150000 or periapsis < 40000 then {
+  lock steering to prograde.
+}
+
 wait until altitude > 70000 or altitude < 20000.
 
 set elapsed to time:seconds - start_time.
