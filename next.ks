@@ -16,7 +16,7 @@ print "Node in: " + round(nd:eta) + ", DeltaV: " + round(dv, 1).
 list engines in eng_list.
 
 for en_ in eng_list {
-  if en_:vacuumisp > 0 {
+  if en_:ignition and en_:vacuumisp > 0 {
 	set en to en_.
   }
 }
@@ -75,7 +75,7 @@ until done
     }
 
     //we have very little left to burn, less then 0.1m/s
-    if nd:deltav:mag < 0.1
+    if nd:deltav:mag < 0.01
     {
         print "Finalizing burn, remain dv " + round(nd:deltav:mag,1) + "m/s, vdot: " + round(vdot(dv0, nd:deltav),1).
         //we burn slowly until our node vector starts to drift significantly from initial vector
