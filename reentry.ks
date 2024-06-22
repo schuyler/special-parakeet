@@ -34,6 +34,8 @@ set warp to 2.
 print "Warping to atmospheric re-entry.".
 
 wait until altitude < 70000.
+panels off.
+
 set warpmode to "physics".
 set warp to 2.
 
