@@ -21,6 +21,8 @@ set warp to 0.
 wait until altitude < 70000.
 print "Aerobraking start.".
 
+panels off.
+
 set start_time to time:seconds.
 set warpmode to "physics".
 set warp to 2.
@@ -37,4 +39,5 @@ print "Apoapsis was lowered by " + round(start_apoapsis - orbit:apoapsis) + "m."
 print "Periapsis was lowered by " + round(start_periapsis - orbit:periapsis) + "m.".
 
 set warp to 0.
+panels on.
 unlock steering.
