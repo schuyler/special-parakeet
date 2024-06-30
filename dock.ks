@@ -8,7 +8,7 @@ print "=== DOCKING APPROACH ===".
 sas off.
 lock rng to target:position - ship:position.
 
-lock up_dir to ship:facing:topvector * r(0, 0, 1).
+lock up_dir to ship:facing:topvector. // * r(0, 0, 1).
 if station = 1 {
   lock steering to lookdirup(target:position, up_dir).
   wait until vang(target:position, ship:facing:vector) < 1.
