@@ -84,16 +84,35 @@ when vang(hdg:vector, ship:facing:vector) < 1 then {
     set phase to 1.
     when angle_of_ascent > 5 then {
       set phase to 2.
-      when angle_of_ascent <= 5 then { //or airspeed < max_speed then {
+      wait 2.
+      when angle_of_ascent <= 5 or airspeed < max_speed then {
 	print "Activating rocket engines at " + round(altitude) + "m.".
 	stage.
 	set phase to 3.
+	when pitch > angle_of_ascent and angle_of_ascent > 0 then {
+	  set pitch to pitch - min(altitude / target_apoapsis, 1) * 0.01.
+	  return altitude < level_off.
+	}
+	when altitude > level_off then {
+	  print "Setting heading to prograde at " + round(altitude) + "m.".
+	  set phase to 4.
+	  lock steering to prograde.
+	}
+	when throttle = 1 and apoapsis >= target_apoapsis * 1.01 then {
+	  lock throttle to 0.
+	  return altitude < 70000.
+	}
+	when throttle = 0 and apoapsis < target_apoapsis * 0.99 then {
+	  print "Burning to keep apoapsis above atmospheric boundary.".
+	  lock throttle to 1.
+	  return altitude < 70000.
+	}
       }
     }
   }
 }
 
-until apoapsis > target_apoapsis {
+until altitude > 70000 {
   print "Phase:     " + phase:tostring:padleft(6)  at (1, 16).
   print "Ascent:    " + round(angle_of_ascent(), 3):tostring:padleft(6) + "º"  at (1, 17).
   print "Mach:      " + round(mach_number(), 3):tostring:padleft(6)  at (1, 19).
@@ -121,27 +140,6 @@ until apoapsis > target_apoapsis {
     set max_thrust to ship:availablethrust.
   }
   wait 0.1.
-}
-
-///// ROCKET ASCENT /////
-
-print "Setting heading to prograde at " + round(altitude) + "m.".
-lock steering to prograde.
-
-wait until apoapsis > target_apoapsis.
-lock throttle to 0.
-wait 1.
-
-/// Keep apoapsis suborbital.
-
-until altitude >= 70000 {
-  if apoapsis < 70000 {
-    print "Burning to keep apoapsis above atmospheric boundary.".
-    lock throttle to 1.
-    wait until apoapsis > target_apoapsis.
-    lock throttle to 0.
-  }
-  wait 1.
 }
 
 /// FINISH IN SUB-ORBIT
