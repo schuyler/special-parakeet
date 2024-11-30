@@ -8,14 +8,16 @@ function minimize {
   parameter nmax is 1000.
 
   local n is 0.
+  local m1 is 0.
+  local m2 is 0.
   until n > nmax or abs(b - a) < epsilon {
     //print "A: " + round(a, 1) + " F(a): " + round(func(a), 1) + " B: " + round(b, 1) + " F(b): " + round(func(b),1).
     set m1 to a + (b - a) / 3.
     set m2 to b - (b - a) / 3.
     if func(m1) > func(m2) {
-	set a to m1.
+	    set a to m1.
     } else {
-	set b to m2.
+	    set b to m2.
     }
     set n to n + 1.
   }
