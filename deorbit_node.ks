@@ -5,8 +5,8 @@ run "common".
 function zero_periapsis {
     parameter
         mnv_node is nextnode,  // The node to adjust (defaults to next node)
-        min_dv is -500,        // Minimum DV to try
-        max_dv is 0,           // Maximum DV to try
+        min_dv is -250,        // Minimum DV to try
+        max_dv is -50,           // Maximum DV to try
         tolerance is 5.        // How close to zero we need to get (in dv)
     
     // Create objective function for this node
@@ -30,25 +30,25 @@ function compute_landing_error {
     parameter 
         burn_start,      // When to place the maneuver node
         target_coord,    // Target landing site (latlng)
-        min_time,        // Minimum allowed time
-        max_time.        // Maximum allowed time
+        min_dv,
+        max_dv.
         
     local not_found to 1e9.
 
     // Return a very large error for out-of-bounds times
-    if burn_start < min_time or burn_start > max_time {
-        return not_found.
-    }
+    // if burn_start < min_time or burn_start > max_time {
+    //     return not_found.
+    // }
 
     // Create a test node at the specified time
     local test_node is node(burn_start, 0, 0, 0).
     add test_node.
     
     // Optimize it for zero periapsis
-    zero_periapsis(test_node).
+    zero_periapsis(test_node, min_dv, max_dv).
     
     // Wait a bit for Trajectories to update
-    wait 0.1.
+    wait 0.05.
     
     local distance is 0.
     
@@ -79,9 +79,18 @@ function compute_landing {
     local min_time is start_time + 60.  // Start 1 minute from now to give some setup time
     local max_time is start_time + orbit:period - 61.
     
+    // Create the final node at the optimal time
+    local nd is node(min_time, 0, 0, 0).
+    add nd.
+
+    // Optimize it for zero periapsis
+    zero_periapsis(nd).
+    remove nd.
+    set start_dv to nd:prograde.
+
     local error_func is {
         parameter t.
-        return compute_landing_error(t, target_coord, min_time, max_time).
+        return compute_landing_error(t, target_coord, start_dv*0.75, start_dv*1.25).
     }.
 
     // Find the time that minimizes landing error
