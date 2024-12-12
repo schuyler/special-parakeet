@@ -47,6 +47,37 @@ function true_anomaly_at_height {
   }
 }
 
+// Calculate flight path angle (γ) at a given height in an orbit
+// Returns angle between velocity vector and local horizontal plane
+// Negative angles indicate descent below horizontal
+// Positive angles indicate ascent above horizontal 
+function flight_path_angle {
+  parameter orbit_.  // Orbit to analyze
+  parameter height_above_datum is 0.
+  
+  local impact_theta is true_anomaly_at_height(orbit_, height_above_datum).
+  if impact_theta < 0 {
+    return lexicon(
+      "angle", 0,
+      "theta", -1
+    ).
+  }
+  
+  local ecc is orbit_:eccentricity.
+  // Flight path angle formula from orbital mechanics:
+  // γ = -arcsin(-e*sin(θ) / sqrt(1 + 2e*cos(θ) + e²))
+  // Negative sign ensures descent is negative per convention
+  local angle is -arcsin(
+    -ecc * sin(impact_theta) /
+    sqrt(1 + 2*ecc*cos(impact_theta) + ecc^2)
+  ).
+  
+  return lexicon(
+    "angle", angle,
+    "theta", impact_theta
+  ).
+}
+
 // Calculate predicted impact point for current vessel using orbital elements
 // height_above_datum: meters above the reference sphere to check for intersection
 function predict_impact {
@@ -54,7 +85,6 @@ function predict_impact {
   
   local orbit_ is ship:orbit.
   local body_ is ship:body.
-  local body_radius is body_:radius + height_above_datum.
   
   // If periapsis is above intersection height, no impact possible
   if orbit_:periapsis > height_above_datum {
@@ -258,6 +288,6 @@ function surface_distance {
 local prediction to predict_terrain_impact().
 print prediction:geo + " at " + prediction:time + "s".
 until false {
-    print "Ground error: "+surface_distance(prediction:geo, ship:geoposition) + " Surface velocity: " + ship:velocity:surface + " Orbital velocity: " + ship:velocity:orbit.
+    print "Ground error: "+surface_distance(prediction:geo, ship:geoposition) + " Surface velocity: " + ship:velocity:surface + " Descent angle: " + descent_angle(ship:orbit):angle.
     wait alt:radar/1000.
 }
