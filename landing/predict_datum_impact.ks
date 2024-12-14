@@ -1,6 +1,7 @@
 @lazyglobal off.
 
 run "true_anomaly_at_height".
+run "orbit_plus_dt".
 
 // Calculate predicted impact point for current vessel using orbital elements
 // height_above_datum: meters above the reference sphere to check for intersection
@@ -35,7 +36,8 @@ function predict_datum_impact {
   local time_to_impact is delta_M / 360 * orbit_:period.
   
   // Get position at impact 
-  local impact_pos is positionat(ship, time:seconds + time_to_impact). //// FIXME: we want the position relative to the orbit_ 
+  local impact_orbit is orbit_plus_dt(time_to_impact, orbit_).
+  local impact_pos is impact_orbit:position. 
   local impact_lat is body_:geopositionof(impact_pos):lat.
   local impact_lng is body_:geopositionof(impact_pos):lng.
   
