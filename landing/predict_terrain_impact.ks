@@ -14,8 +14,8 @@ function predict_terrain_impact {
   
   // Set search bounds based on ±15km terrain deviation
   local max_time_delta is 15000 / impact_velocity.
-  local t_start is sphere_impact:ut - max_time_delta.
-  local t_end is sphere_impact:ut + max_time_delta.
+  local t_start is sphere_impact:ut:seconds - max_time_delta.
+  local t_end is sphere_impact:ut:seconds + max_time_delta.
   
   function altitude_difference {
     parameter t.
@@ -28,15 +28,15 @@ function predict_terrain_impact {
   }
   
   // Find actual impact time using minimize
-  local terrain_impact_time is minimize(altitude_difference@, t_start, t_end, 0.01).
-  local fall_time is terrain_impact_time - time:seconds.
+  local terrain_impact_time is minimize(altitude_difference@, t_start, t_end, 0.1).
+  local fall_time is terrain_impact_time - time.
   local impact_pos is positionat(ship, terrain_impact_time).
   local geo is body:geopositionof(impact_pos).
   local impact_lat is geo:lat.
   local impact_lng is geo:lng.
   
   // Account for body rotation during fall
-  local rotation_deg is fall_time * (360 / body:rotationperiod).
+  local rotation_deg is fall_time:seconds * (360 / body:rotationperiod).
   local final_lng is impact_lng - rotation_deg.
   
   // Normalize longitude to -180 to 180
@@ -55,15 +55,15 @@ function predict_terrain_impact {
 }
 
 run "surface_distance".
-run "flight_path_angle".
+//run "flight_path_angle".
 
 function go_nuts {
   local prediction to predict_terrain_impact().
   print prediction:geo + " at " + prediction:eta + "s".
   until false {
       print "Ground error: "+surface_distance(prediction:geo, ship:geoposition) + 
-            " Surface velocity: " + ship:velocity:surface +
-            " Descent angle: " + flight_path_angle(ship:orbit, prediction:geo:terrainheight):angle.
+            " Surface velocity: " + ship:velocity:surface. 
+            //+ " Descent angle: " + flight_path_angle(ship:orbit, prediction:geo:terrainheight):angle.
       wait alt:radar/1000.
   }
 }

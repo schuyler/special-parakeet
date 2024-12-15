@@ -47,7 +47,17 @@ function test_closest_approach {
     test_orbit,
     test_position
   ).
-  
+
+  print "Closest approach to orbit location + 600s:". 
+  print "Time to closest approach: " + round(result:eta, 1) + "s".
+  print "Distance at approach: " + round(result:distance, 1) + "m".
+
+  print "Closest approach to (0,0):".
+  set test_position to body:geopositionlatlng(0,0):position.
+  set result to time_to_closest_approach(
+    test_orbit,
+    test_position
+  ).
   print "Time to closest approach: " + round(result:eta, 1) + "s".
   print "Distance at approach: " + round(result:distance, 1) + "m".
 }

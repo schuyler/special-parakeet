@@ -2,7 +2,7 @@
 
 function orbit_at_t {
   parameter orbit_ is ship:orbit.    // Orbit object to analyze
-  parameter ut is time:seconds.   // Universal Time to evaluate orbit at
+  parameter ut is time.   // Universal Time to evaluate orbit at
 
   // Create new orbit with same elements but shifted epoch. This causes KSP to 
   // evaluate the orbit as if delta_t seconds have passed.
@@ -13,7 +13,7 @@ function orbit_at_t {
     orbit_:longitudeofascendingnode,
     orbit_:argumentofperiapsis,
     orbit_:meananomalyatepoch,
-    orbit_:epoch - ut + time:seconds, // Shift epoch back by delta_t seconds
+    (orbit_:epoch + (time - ut)):seconds, // Shift epoch back by delta_t seconds
     orbit_:body
   ).
 }

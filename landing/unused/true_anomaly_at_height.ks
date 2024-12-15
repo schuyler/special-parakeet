@@ -1,3 +1,5 @@
+@lazyGlobal off.
+
 // Calculate true anomaly where orbit reaches a given height above datum
 // Returns -1 if orbit never reaches that height
 function true_anomaly_at_height {
