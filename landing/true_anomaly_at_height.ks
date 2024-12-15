@@ -1,8 +1,8 @@
 // Calculate true anomaly where orbit reaches a given height above datum
 // Returns -1 if orbit never reaches that height
 function true_anomaly_at_height {
-  parameter height_above_datum is 0.
   parameter orbit_ is ship:orbit.  // Orbit to analyze
+  parameter height_above_datum is 0.
 
   local body_ is orbit_:body.
   local body_radius is body_:radius + height_above_datum.

@@ -1,17 +1,15 @@
 @lazyglobal off.
 
-run "orbit_plus_dt".
+run "orbit_at_t".
 
 // Create a new orbit object representing the result of a maneuver
 function orbit_after_maneuver {
+  parameter orbit_.  // The current orbit
   parameter burn_vector.  // The delta-v vector to apply
   parameter burn_time.    // When to apply the burn (in universal time)
-  parameter orbit_ is ship:orbit.  // The current orbit
-  
-  local dt is burn_time - time:seconds.
  
   // Get the state vectors at burn time
-  local new_orbit is orbit_plus_dt(dt, orbit_).
+  local new_orbit is orbit_at_t(orbit_, burn_time).
   local pos is new_orbit:position - new_orbit:body:position.
   local vel is new_orbit:velocity:orbit + burn_vector.
   
@@ -38,7 +36,7 @@ function test_orbit_after_maneuver {
   print "".
   print "Burn vector: " + burn_vector.
   print "".
-  local new_orbit is orbit_after_maneuver(burn_vector, burn_time, ship:orbit).
+  local new_orbit is orbit_after_maneuver(ship:orbit, burn_vector, burn_time).
   print "New orbit position: " + new_orbit:position.
   print "New orbit velocity: " + new_orbit:velocity:orbit.
 

@@ -6,10 +6,10 @@ run "true_anomaly_at_height".
 // Negative angles indicate descent below horizontal
 // Positive angles indicate ascent above horizontal 
 function flight_path_angle {
-  parameter height_above_datum is 0.
   parameter orbit_ is ship:orbit.  // Orbit to analyze
+  parameter height_above_datum is 0.
 
-  local impact_theta is true_anomaly_at_height(height_above_datum, orbit_).
+  local impact_theta is true_anomaly_at_height(orbit_, height_above_datum).
   if impact_theta < 0 {
     return lexicon(
       "angle", 0,

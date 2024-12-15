@@ -1,13 +1,13 @@
 @lazyglobal off.
 
 run "true_anomaly_at_height".
-run "orbit_plus_dt".
+run "orbit_at_t".
 
 // Calculate predicted impact point for current vessel using orbital elements
 // height_above_datum: meters above the reference sphere to check for intersection
 function predict_datum_impact {
-  parameter height_above_datum is 0.
   parameter orbit_ is ship:orbit.
+  parameter height_above_datum is 0.
   
   local body_ is orbit_:body.
   
@@ -23,7 +23,7 @@ function predict_datum_impact {
   // Get orbital elements for impact calculation
   local ecc is orbit_:eccentricity.
   local true_anomaly is orbit_:trueanomaly.  
-  local impact_true_anomaly to true_anomaly_at_height(height_above_datum, orbit_).
+  local impact_true_anomaly to true_anomaly_at_height(orbit_, height_above_datum).
 
   // Calculate time to impact using mean anomaly difference
   local current_E is arctan2(sqrt(1-ecc^2) * sin(true_anomaly), ecc + cos(true_anomaly)).
@@ -36,7 +36,8 @@ function predict_datum_impact {
   local time_to_impact is delta_M / 360 * orbit_:period.
   
   // Get position at impact 
-  local impact_orbit is orbit_plus_dt(time_to_impact, orbit_).
+  local impact_ut is time:seconds + time_to_impact.
+  local impact_orbit is orbit_at_t(orbit_, impact_ut).
   local impact_pos is impact_orbit:position. 
   local impact_lat is body_:geopositionof(impact_pos):lat.
   local impact_lng is body_:geopositionof(impact_pos):lng.
@@ -54,8 +55,7 @@ function predict_datum_impact {
   
   return lexicon(
     "geo", body_:geopositionlatlng(impact_lat, final_lng),
-    "lat", impact_lat,
-    "lng", final_lng,
-    "time", time_to_impact
+    "eta", time_to_impact,
+    "ut", impact_ut
   ).
 }
