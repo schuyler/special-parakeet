@@ -30,8 +30,8 @@ function time_to_closest_approach {
   ).
   
   return lexicon(
-    "ut", best_time,
-    "eta", best_time - time:seconds,
+    "time", timestamp(best_time),
+    "eta", timespan(best_time - time:seconds),
     "distance", distance_at_time(best_time)
   ).
 }

@@ -14,8 +14,8 @@ function predict_terrain_impact {
   
   // Set search bounds based on ±15km terrain deviation
   local max_time_delta is 15000 / impact_velocity.
-  local t_start is sphere_impact:ut:seconds - max_time_delta.
-  local t_end is sphere_impact:ut:seconds + max_time_delta.
+  local t_start is sphere_impact:time:seconds - max_time_delta.
+  local t_end is sphere_impact:time:seconds + max_time_delta.
   
   function altitude_difference {
     parameter t.
@@ -50,7 +50,7 @@ function predict_terrain_impact {
   return lexicon(
     "geo", body:geopositionlatlng(impact_lat, final_lng),
     "eta", fall_time,
-    "ut", terrain_impact_time
+    "time", terrain_impact_time
   ).
 }
 

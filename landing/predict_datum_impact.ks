@@ -43,6 +43,6 @@ function predict_datum_impact {
   return lexicon(
     "geo", body_:geopositionlatlng(impact_lat, final_lng),
     "eta", time_to_impact,
-    "ut", impact_ut
+    "time", impact_ut
   ).
 }
