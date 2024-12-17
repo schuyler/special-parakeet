@@ -14,7 +14,12 @@ function surface_distance {
   
   // Haversine formula
   local dlat is rlat2 - rlat1.
-  local dlng is rlng2 - rlng1.
+  // Handle anti-meridian case by ensuring longitude difference is ≤ 180°
+  local dlng is abs(geo2:lng - geo1:lng).
+  if dlng > 180 {
+    set dlng to 360 - dlng.
+  }
+  set dlng to dlng * constant:degtorad.
   
   local a is sin(dlat/2)^2 + 
            cos(rlat1) * cos(rlat2) * sin(dlng/2)^2.

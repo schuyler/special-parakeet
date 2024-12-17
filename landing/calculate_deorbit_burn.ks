@@ -11,25 +11,25 @@ run "surface_distance".
 function calculate_deorbit_burn {
   parameter target_geo.      // Geocoordinates of desired landing site
   parameter lead_angle is 45.  // Angle before closest approach to burn
-  parameter search_orbits is 1.  // How many orbits ahead to search
   
   // Find time of closest approach to target
   local lead_time is lead_angle / 360 * ship:orbit:period.
   local approach is time_to_closest_approach(
     ship:orbit,
-    target_geo:position,
-    ship:orbit:period * search_orbits
+    target_geo 
   ).
 
-    // Calculate how much time represents the desired angle
+  // Calculate how much time represents the desired angle
   if time > approach:time - lead_time {
     set approach to time_to_closest_approach(
-      orbit_at_t(ship:orbit, approach:time + 1),
-      target_geo:position,
-      ship:orbit:period * search_orbits
+      ship:orbit,
+      target_geo,
+      time + ship:orbit:period
     ).
   }
   local burn_time to approach:time - lead_time.
+  local terrain_height to approach:closest:terrainheight.
+
 
   // Function to evaluate quality of a retrograde burn
   function evaluate_burn {
@@ -48,15 +48,18 @@ function calculate_deorbit_burn {
     ).
 
     // Find where this orbit intersects the datum
-    local impact is predict_datum_impact(new_orbit, target_geo:terrainheight).
+    local impact is predict_datum_impact(new_orbit, terrain_height).
     if impact:time < 0 {
       // print "dv: " + dv_mag + " no impact".
       return 100000000.  // Arbitrary large number if no impact
     }
     
     // Return distance to target
-    local dist to surface_distance(impact:geo, target_geo).
-    // print "dv: " + dv_mag + " dist: " + dist.
+    local actual_impact to geoposition_at_t(impact:geo, burn_time).
+    local dist to surface_distance(actual_impact, target_geo).
+
+    //local dist to surface_distance(impact:geo, target_geo).
+    //print "dv: " + dv_mag + " dist: " + dist.
     return dist.
   }
   
@@ -82,6 +85,7 @@ function calculate_deorbit_burn {
   return lexicon(
     "vector", burn_vector,
     "time", burn_time,
+    "geo", approach:closest,
     "distance", evaluate_burn(best_dv)
   ).
 }
@@ -97,4 +101,4 @@ function test_deorbit {
   print "Expected miss distance: " + round(result:distance, 1) + "m".
 }
 
-test_deorbit.
+// test_deorbit.

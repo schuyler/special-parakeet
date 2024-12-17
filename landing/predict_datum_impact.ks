@@ -1,6 +1,7 @@
 @lazyglobal off.
 
 run "orbital".
+run "geoposition_at_t".
 
 // Calculate predicted impact point for current vessel using orbital elements
 // height_above_datum: meters above the reference sphere to check for intersection
@@ -26,22 +27,11 @@ function predict_datum_impact {
   local impact_ut is time + time_to_impact.
   local impact_orbit is orbit_at_t(orbit_, impact_ut).
   local impact_pos is impact_orbit:position. 
-  local impact_lat is body_:geopositionof(impact_pos):lat.
-  local impact_lng is body_:geopositionof(impact_pos):lng.
-  
-  // Account for body rotation during fall
-  local rotation_deg is time_to_impact:seconds * (360 / body_:rotationperiod).
-  local final_lng is impact_lng - rotation_deg.
+  local impact_geo is geoposition_at_t(body_:geopositionof(impact_pos), impact_ut).
 
-  // Normalize longitude to -180 to 180
-  if final_lng > 180 {
-    set final_lng to final_lng - 360.
-  } else if final_lng < -180 {
-    set final_lng to final_lng + 360.
-  }
-  
   return lexicon(
-    "geo", body_:geopositionlatlng(impact_lat, final_lng),
+    "geo", impact_geo,
+    "position", impact_pos,
     "eta", time_to_impact,
     "time", impact_ut
   ).

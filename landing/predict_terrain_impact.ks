@@ -9,13 +9,13 @@ function predict_terrain_impact {
   local sphere_impact is predict_datum_impact().
   
   // Get impact velocity for time bound calculations
-  local impact_time is sphere_impact:ut.
+  local impact_time is sphere_impact:time.
   local impact_velocity to velocityat(ship, impact_time):orbit:mag.
   
   // Set search bounds based on ±15km terrain deviation
   local max_time_delta is 15000 / impact_velocity.
-  local t_start is sphere_impact:time:seconds - max_time_delta.
-  local t_end is sphere_impact:time:seconds + max_time_delta.
+  local t_start is impact_time:seconds - max_time_delta.
+  local t_end is impact_time:seconds + max_time_delta.
   
   function altitude_difference {
     parameter t.
@@ -68,4 +68,4 @@ function go_nuts {
   }
 }
 
-go_nuts.
+//go_nuts.
