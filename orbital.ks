@@ -14,6 +14,51 @@ function mean_anomaly_at_t { // return [0, 360)º
   return mod(m, 360). 
 }
 
+// Convert true anomaly to mean anomaly for an orbit
+function true_to_mean_anomaly {
+  parameter theta.     // True anomaly in degrees
+  parameter ecc.      // Orbit eccentricity
+  
+  // First convert to eccentric anomaly
+  local E is arctan2(sqrt(1-ecc^2) * sin(theta), ecc + cos(theta)).
+  
+  // Then to mean anomaly (KEEP the radtodeg factor!)
+  local M is E - ecc * sin(E) * constant:radtodeg.
+  
+  // Return normalized to 0-360
+  if M < 0 { 
+    return M + 360. 
+  }
+  return M.
+}
+
+// Convert mean anomaly to true anomaly for an orbit
+function mean_to_true_anomaly {
+  parameter M.        // Mean anomaly in degrees
+  parameter ecc.      // Orbit eccentricity
+  parameter epsilon is 0.0001.  // Desired precision in degrees
+  
+  // Solve Kepler's equation iteratively to find E (eccentric anomaly)
+  local E is M.  // Initial guess
+  local delta is epsilon + 1.
+  local count is 0.
+  until delta < epsilon and count < 100 {
+    local E_next is M + ecc * sin(E) * constant:radtodeg.  // KEEP radtodeg!
+    set delta to abs(E_next - E).
+    set E to E_next.
+    set count to count + 1.
+  }
+  
+  // Convert to true anomaly
+  local theta is arctan2(sqrt(1-ecc^2) * sin(E), cos(E) - ecc).
+  
+  // Return normalized to 0-360
+  if theta < 0 {
+    return theta + 360.
+  }
+  return theta.
+}
+
 // We going up or down?
 function is_ascending {
   parameter ob is ship:orbit.
@@ -134,25 +179,23 @@ function time_to_meridian {
     set d_lng to d_lng + 360.
   }
   
-  // Get current mean anomaly
+  // Current true anomaly
+  local current_true_anomaly to orbit_:trueanomaly.
+  
+  // Simple relationship: longitude advance = true anomaly advance
+  local target_true_anomaly to mod(current_true_anomaly + d_lng, 360).
+  
+  // Convert to mean anomaly and calculate time
+  local target_mean_anomaly to true_to_mean_anomaly(target_true_anomaly, orbit_:eccentricity).
   local current_ma to mean_anomaly_at_t(orbit_).
   
-  // Estimate target mean anomaly (assuming equatorial orbit)
-  local body_rotation_rate to 360 / orbit_:body:rotationperiod.
-  local orbital_angular_velocity to 360 / orbit_:period.
-  local relative_angular_velocity to orbital_angular_velocity - body_rotation_rate.
-  
-  // How much orbital angle do we need to cover?
-  local orbital_angle_needed to d_lng * (orbital_angular_velocity / relative_angular_velocity).
-  local target_ma to mod(current_ma + orbital_angle_needed, 360).
-  
-  // Time difference based on mean anomaly difference
-  local ma_diff to target_ma - current_ma.
+  local ma_diff to target_mean_anomaly - current_ma.
   if ma_diff < 0 {
     set ma_diff to ma_diff + 360.
   }
   
-  local dt to (ma_diff / 360) * orbit_:period.
+  local mean_motion to 360 / orbit_:period.
+  local dt to (ma_diff / mean_motion).
   return timespan(dt).
 }
 
@@ -195,3 +238,14 @@ function geoposition_at {
   local ob to orbit_at(ob0, t).
   return ob:body:geopositionof(ob:position).
 }
+
+// Test the conversion functions
+// local current_ma to mean_anomaly_at_t(ship:orbit).
+// local current_ta to ship:orbit:trueanomaly.
+// local converted_ta to mean_to_true_anomaly(current_ma, ship:orbit:eccentricity).
+// local converted_ma to true_to_mean_anomaly(current_ta, ship:orbit:eccentricity).
+
+// print("Current MA: " + round(current_ma, 2)).
+// print("Current TA: " + round(current_ta, 2)).
+// print("MA->TA conversion: " + round(converted_ta, 2)).
+// print("TA->MA conversion: " + round(converted_ma, 2)).
