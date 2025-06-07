@@ -129,16 +129,31 @@ function time_to_meridian {
   parameter given_lng is 0.
 
   local geo_pos to orbit_:body:geopositionof(orbit_:position).
-  print "given: " + round(given_lng, 3) + " pos: " + round(geo_pos:lng, 3).
   local d_lng to given_lng - geo_pos:lng.
   if d_lng < 0 {
     set d_lng to d_lng + 360.
   }
-  print "d_lng = " + round(d_lng, 3).
-  // not sure this rotation accounting is correct
-  local dt to orbit_:period * (1 + orbit_:period / orbit_:body:rotationperiod) * (d_lng / 360).
-  print "meridian reached in " + round(dt, 3) + "s".
-  return timespan(dt).  
+  
+  // Get current mean anomaly
+  local current_ma to mean_anomaly_at_t(orbit_).
+  
+  // Estimate target mean anomaly (assuming equatorial orbit)
+  local body_rotation_rate to 360 / orbit_:body:rotationperiod.
+  local orbital_angular_velocity to 360 / orbit_:period.
+  local relative_angular_velocity to orbital_angular_velocity - body_rotation_rate.
+  
+  // How much orbital angle do we need to cover?
+  local orbital_angle_needed to d_lng * (orbital_angular_velocity / relative_angular_velocity).
+  local target_ma to mod(current_ma + orbital_angle_needed, 360).
+  
+  // Time difference based on mean anomaly difference
+  local ma_diff to target_ma - current_ma.
+  if ma_diff < 0 {
+    set ma_diff to ma_diff + 360.
+  }
+  
+  local dt to (ma_diff / 360) * orbit_:period.
+  return timespan(dt).
 }
 
 // --- kOS ORBIT HELPERS
