@@ -62,15 +62,19 @@ function test_time_to_longitude {
     // Test the time_to_longitude function with a specific target longitude.
     local orbit_ is ship:orbit.
 
+    print "== Time to Longitude Test ==".
+
     // Determine the current longitude of periapsis
-    local periapsis_longitude is orbit_:lan + orbit_:argumentofperiapsis + (time:seconds - orbit_:epoch) * (360 / orbit_:body:rotationPeriod).
+    local periapsis_longitude is body_longitude(time + orbit_:eta:periapsis, orbit_).
     local t is time_to_longitude(periapsis_longitude, orbit_).
     
     // Print the result.
-    print "== Time to Longitude Test ==".
+    print "Current time: " + time + " seconds.".
+    print "Orbital period: " + orbit_:period + " seconds.".
+    print "Current longitude: " + ship:longitude + "º.".
     print "Time to reach longitude " + periapsis_longitude + " is: " + t + " seconds.".
-    print "Time to reach periapsis is: " + orbit_:eta:periapsis + " seconds.".
-    print "Difference: " + (t - orbit_:eta:periapsis) + " seconds.".
+    print "Time to reach periapsis is: " + (time + orbit_:eta:periapsis) + " seconds.".
+    print "Difference: " + (t - (time + orbit_:eta:periapsis)) + " seconds.".
     print "".
 }
 
@@ -79,4 +83,5 @@ test_mean_anomaly().
 test_eccentric_anomaly().
 test_true_anomaly().
 test_body_longitude().
-//test_time_to_longitude().
+test_time_to_longitude().
+//print "Longitude: " + body_longitude(time) + ", longitude + 1 orbit: "  + body_longitude(time+synodic_period()).
