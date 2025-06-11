@@ -37,6 +37,39 @@ function engine_isp {
   return 0.
 }
 
+// Find the zero crossing of a function
+function find_zero_crossing {
+  parameter func, a, b.
+  parameter epsilon is 0.2.
+  parameter nmax is 1000.
+  
+  local fa is func(a).
+  local fb is func(b).
+  
+  // Handle edge cases
+  if fa <= 0 { return a. }     // Already at/below surface at start
+  if fb > 0 { return b. }      // Still above surface at end (no impact)
+  
+  local n is 0.
+  until n > nmax or abs(b - a) < epsilon {
+    local mid is (a + b) / 2.
+    local fmid is func(mid).
+    
+    // Early termination if we hit the surface
+    if fmid <= 0 {
+      return mid.
+    }
+    
+    // Zero crossing must be between mid and b (right half)
+    set a to mid.
+    set fa to fmid.
+    set n to n + 1.
+  }
+  
+  return (a + b) / 2.
+}
+
+
 // Rocket equation
 function burn_duration {
   parameter delta_v.
