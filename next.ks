@@ -86,6 +86,11 @@ until done
         print "End burn, remain dv " + round(nd:deltav:mag,1) + "m/s, vdot: " + round(vdot(dv0, nd:deltav),1).
         set done to True.
     }
+
+    if ship:availableThrust <= 0 {
+      stage.
+      wait 0.
+    }
 }
 unlock steering.
 unlock throttle.

@@ -1,6 +1,7 @@
 clearscreen.
 parameter target_apoapsis is 72000.
 parameter level_off is 40000.
+parameter roll is 270.
 //parameter orbital_speed is 2150.
 print("= LAUNCH = ").
 
@@ -11,7 +12,7 @@ sas off.
 lock prograde_angle to 90 - vang(ship:srfprograde:vector, up:vector).
 lock air_pressure to body:atm:altitudepressure(ship:altitude).
 lock pitch to 90.
-lock steering to heading(90, pitch, 90).
+lock steering to heading(90, pitch, roll).
 lock throttle to 1.
 set min_pitch to 5.
 stage.
