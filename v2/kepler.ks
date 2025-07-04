@@ -163,17 +163,19 @@ function body_rotation {
 
 // == Body position functions ==
 
+function orbital_axis {
+    parameter orbit_.
+    local pos to orbit_:position - orbit_:body:position.  // Position of the ship in SOI-RAW coordinates.
+    local vel to orbit_:velocity:orbit.                   // Velocity of the ship in SOI-RAW coordinates.
+    return vcrs(pos, vel):normalized.
+}
+
 function orbit_at {
     parameter t is time.
     parameter orbit_ is ship:orbit.
 
     local nu_0 is orbit_:trueanomaly.
     local pos_0 to orbit_:position - orbit_:body:position.  // Position of the ship in SOI-RAW coordinates.
-    local vel_0 to orbit_:velocity:orbit.                   // Velocity of the ship in SOI-RAW coordinates.
-
-    // Direction of orbital axis in SOI-RAW coordinates.
-    // Normal to the orbital plane, pointing towards the body.
-    local orbital_axis to vcrs(pos_0, vel_0):normalized.
 
     // True anomaly at time t.
     local nu_t to true_anomaly(t, orbit_).
@@ -188,7 +190,8 @@ function orbit_at {
     local lng_offset to nu_0.
 
     // Create a rotation matrix around the orbital axis by the angle between the future true anomaly and the prime meridian.
-    local orbital_rotation to angleaxis(nu_t - lng_offset, orbital_axis).
+    local axis to orbital_axis(orbit_).
+    local orbital_rotation to angleaxis(nu_t - lng_offset, axis).
 
     // Rotate the initial position vector pos_0 around the orbital axis by the angle of the true anomaly difference.
     // This gives us the position of the ship in SOI-RAW coordinates at time t
@@ -207,7 +210,7 @@ function orbit_at {
     local vel_angle_t to 90 - flight_path_angle.
 
     // Rotate the future positiion vector by the corresponding angle and scale to magnitude
-    local vel_t to angleaxis(vel_angle_t, orbital_axis) * pos_t:normalized * v_t_mag.
+    local vel_t to angleaxis(vel_angle_t, axis) * pos_t:normalized * v_t_mag.
 
     return lexicon(
         "position", pos_t,
@@ -216,7 +219,7 @@ function orbit_at {
     ).
 }
 
-// == Body longitude functions ==
+// == Body sphere functions ==
 
 function wrap_longitude {
     parameter lng.
@@ -235,6 +238,22 @@ function body_longitude {
         body_rotation(t, orbit_)
     ).
     return wrap_longitude(lng).
+}
+
+function geoposition_at {
+    parameter t is time.
+    parameter orbit_ is orbit.
+
+    // Project the orbit to time t
+    parameter future is orbit_at(t, orbit_).
+
+    // Latitude is 90º minus the angle between the Y-axis and the SOI-RAW position vector 
+    local lat is 90 - vang(v(0, 1, 0), future:position:normalized).
+
+    // Longitude is LAN + AoP + True Anomaly - body rotation
+    local lng is body_longitude(t, orbit_).
+
+    return orbit_:body:geoPositionLatLng(lat, lng).
 }
 
 function time_to_longitude {

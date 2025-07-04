@@ -79,6 +79,13 @@ function test_body_longitude {
     print "".
 }
 
+function test_geoposition_at {
+    local t is time.
+    print "== Body Geoposition Test ==".
+    print "geoposition_at(): " + geoposition_at(t).
+    print "body:geopositionof(ship): " + body:geopositionof(ship:position).
+}
+
 function test_time_to_longitude {
     // Test the time_to_longitude function with a specific target longitude.
     local orbit_ is ship:orbit.
@@ -106,5 +113,6 @@ test_eccentric_anomaly().
 test_true_anomaly().
 test_orbit_at(600).
 test_body_longitude().
-test_time_to_longitude().
+test_geoposition_at().
+//test_time_to_longitude().
 //print "Longitude: " + body_longitude(time) + ", longitude + 1 orbit: "  + body_longitude(time+synodic_period()).
