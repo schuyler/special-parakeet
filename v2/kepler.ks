@@ -104,7 +104,7 @@ function mean_anomaly {
 function eccentric_anomaly {
     parameter t is time.
     parameter orbit_ is ship:orbit.
-    parameter epsilon is 0.0001.
+    parameter epsilon is 0.001.
 
     // Calculate the eccentric anomaly E from the mean anomaly M using Kepler's equation.
     local M is mean_anomaly(t, orbit_).
@@ -243,12 +243,16 @@ function body_longitude {
 function geoposition_at {
     parameter t is time.
     parameter orbit_ is orbit.
+    parameter pos is 0.
 
     // Project the orbit to time t
-    parameter future is orbit_at(t, orbit_).
+    if pos = 0 {
+        local future is orbit_at(t, orbit_).
+        set pos to future:position.
+    }
 
     // Latitude is 90º minus the angle between the Y-axis and the SOI-RAW position vector 
-    local lat is 90 - vang(v(0, 1, 0), future:position:normalized).
+    local lat is 90 - vang(v(0, 1, 0), pos:normalized).
 
     // Longitude is LAN + AoP + True Anomaly - body rotation
     local lng is body_longitude(t, orbit_).
