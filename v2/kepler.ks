@@ -90,6 +90,8 @@ function bisect {
     return c.
 }
 
+// == Keplerian orbit functions ==
+
 function mean_anomaly {
     parameter t is time.
     parameter orbit_ is ship:orbit.
@@ -159,6 +161,63 @@ function body_rotation {
     return orbit_:body:rotationangle + (360 / orbit_:body:rotationPeriod) * (t - orbit_:epoch):seconds.
 }
 
+// == Body position functions ==
+
+function orbit_at {
+    parameter t is time.
+    parameter orbit_ is ship:orbit.
+
+    local nu_0 is orbit_:trueanomaly.
+    local pos_0 to orbit_:position - orbit_:body:position.  // Position of the ship in SOI-RAW coordinates.
+    local vel_0 to orbit_:velocity:orbit.                   // Velocity of the ship in SOI-RAW coordinates.
+
+    // Direction of orbital axis in SOI-RAW coordinates.
+    // Normal to the orbital plane, pointing towards the body.
+    local orbital_axis to vcrs(pos_0, vel_0):normalized.
+
+    // True anomaly at time t.
+    local nu_t to true_anomaly(t, orbit_).
+
+    // Radius of the orbit at time t.
+    local e to orbit_:eccentricity.
+    local a to orbit_:semimajoraxis.
+    local r_t to a * (1 - e^2) / (1 + e * cos(nu_t)).
+
+    // Find the angle between the prime meridian and the longitude of the true anomaly.
+    // local lng_offset to orbit_:longitudeofascendingnode + orbit_:argumentofperiapsis + nu_0.
+    local lng_offset to nu_0.
+
+    // Create a rotation matrix around the orbital axis by the angle between the future true anomaly and the prime meridian.
+    local orbital_rotation to angleaxis(nu_t - lng_offset, orbital_axis).
+
+    // Rotate the initial position vector pos_0 around the orbital axis by the angle of the true anomaly difference.
+    // This gives us the position of the ship in SOI-RAW coordinates at time t
+    local pos_angle_t to orbital_rotation * pos_0:normalized.
+
+    // Scale the direction vector by the radius of the orbit at time t.
+    local pos_t to pos_angle_t * r_t.
+
+    // Magnitude of velocity at time t give by vis-viva equation
+    local v_t_mag to sqrt(orbit_:body:mu * (2 / r_t - 1 / a)).
+
+    // Flight path angle at time t (explain)
+    local flight_path_angle to arctan2(e * sin(nu_t), (1 + e * cos(nu_t))).
+
+    // Velocity direction versus flight path angle (explain)
+    local vel_angle_t to 90 - flight_path_angle.
+
+    // Rotate the future positiion vector by the corresponding angle and scale to magnitude
+    local vel_t to angleaxis(vel_angle_t, orbital_axis) * pos_t:normalized * v_t_mag.
+
+    return lexicon(
+        "position", pos_t,
+        "velocity", vel_t,
+        "time", t
+    ).
+}
+
+// == Body longitude functions ==
+
 function wrap_longitude {
     parameter lng.
     // Shift the longitude to the range [0, 360) by 180, then shift it back to the range [-180, 180) by subtracting whole multiples of 360.
@@ -197,7 +256,7 @@ function time_to_longitude {
     ).
 
     // Time estimate is based on the difference between the estimated true anomaly and the current true anomaly,
-    local nu_0 is true_anomaly(time, orbit_).
+    local nu_0 is orbit_:trueanomaly.
 
     // If the estimated true anomaly is less than the current one, we need to look one orbit ahead.
     if nu_estimate < nu_0 {
@@ -206,7 +265,7 @@ function time_to_longitude {
 
     // The time estimate is the difference in true anomaly, divided by the mean motion.
     local t_estimate is
-        (nu_estimate - true_anomaly(time, orbit_)) * orbit_:period / 360.
+        (nu_estimate - nu_0) * orbit_:period / 360.
 
     // Estimate the time window around the target longitude.
     local t0 is time.

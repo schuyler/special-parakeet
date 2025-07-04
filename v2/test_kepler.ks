@@ -46,6 +46,27 @@ function test_true_anomaly {
     print "".
 }
 
+function test_orbit_at {
+    parameter dt is 0.
+    local t is time.
+
+    local orbit_t is orbit_at(t + dt, ship:orbit).
+    local pos_t is positionAt(ship, time + dt) - body:position. // orbit_t:position is SOI-RAW
+    local vel_t is velocityAt(ship, time + dt).
+
+    // print "body:position " + body:position + " (" + round(body:position:mag, 1) + ")".
+    print "== Orbital Position Prediction ==".
+    print "positionat(t) " + pos_t + " (" + round(pos_t:mag, 1) + ")".
+    print "orbit_t:position " + orbit_t:position + " (" + round(orbit_t:position:mag, 1) + ")".
+    print "delta: " + round((pos_t - orbit_t:position):mag, 3) + " m".
+
+    print "== Orbital Velocity Prediction ==".
+    print "velocityat(t) " + vel_t:orbit + " (" + round(vel_t:orbit:mag, 1) + ")".
+    print "orbit_t:velocity " + orbit_t:velocity + " (" + round(orbit_t:velocity:mag, 1) + ")".
+    print "delta: " + round((vel_t:orbit - orbit_t:velocity):mag, 3) + " m/s".
+
+}
+
 function test_body_longitude {
     // Calculate the longitude of the body at the current time.
     local lon is body_longitude().
@@ -78,10 +99,12 @@ function test_time_to_longitude {
     print "".
 }
 
+clearscreen.
 test_mean_anomaly_at_epoch().
 test_mean_anomaly().
 test_eccentric_anomaly().
 test_true_anomaly().
+test_orbit_at(600).
 test_body_longitude().
 test_time_to_longitude().
 //print "Longitude: " + body_longitude(time) + ", longitude + 1 orbit: "  + body_longitude(time+synodic_period()).
