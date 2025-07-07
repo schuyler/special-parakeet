@@ -1,6 +1,9 @@
 // Functions related to Keplerian orbits
 // https://ksp-kos.github.io/KOS/structures/orbits/orbit.html
 
+cd(scriptPath:parent).
+runoncepath("optimize.ks").
+
 // == Helper functions ==
 
 function wrap_degrees {
@@ -9,85 +12,6 @@ function wrap_degrees {
     // even if the input is negative.
     parameter deg.
     return mod(mod(deg, 360) + 360, 360).
-}
-
-// === Optimization functions ===
-
-function find_zero { // of a function using the Newton-Raphson method
-    parameter f.
-    parameter df. // Derivative of f.
-    parameter x0.
-    parameter epsilon is 0.0001.
-    parameter max_iterations is 100.
-    parameter debug is false.
-
-    local x is x0.
-    local deltaX is 1.0.
-    local iteration is 0.
-
-    // Newton-Raphson finds roots of f(x) = 0 using: x_{n+1} = x_n - f(x_n)/f'(x_n)
-    // It stops when the change in x is less than epsilon or after max_iterations.
-
-    until abs(deltaX) < epsilon or iteration > max_iterations {
-        set iteration to iteration + 1.
-        set df_x to df(x).
-        if df_x = 0 { // Avoid division by zero
-            print "Derivative is zero at x = " + round(x, 6) + ". Stopping iteration.".
-            return x.
-        }
-        set deltaX to f(x) / df_x.
-        set x to x - deltaX.
-        if debug {
-            print "Iteration " + iteration + ": x = " + x + ", f(x) = " + f(x) + ", df(x) = " + df(x) + ".".
-        }
-    }
-    
-    //print "Iterations: " + iteration + ", final x = " + x + ", f(x) = " + f(x) +".".
-    return x.
-}
-
-function bisect {
-    parameter f.
-    parameter start.
-    parameter end.
-    parameter epsilon is 0.0001.
-    parameter max_iterations is 100.
-    parameter debug is false.
-
-    local a is start.
-    local b is end.
-    local c is (a + b) / 2.
-    local iteration is 0.
-    // Bisection method finds roots of f(x) = 0 by repeatedly halving the interval [a, b] where f(a) and f(b) have opposite signs.
-    if f(a) * f(b) > 0 {
-        print "Bisection bracketing failed:".
-        print "  f(" + round(a,2) + ") = " + round(f(a),4).
-        print "  f(" + round(b,2) + ") = " + round(f(b),4).
-        print "  Both have same sign - no root in interval".
-        return -1.
-    }
-
-    local f_a is f(a).
-    local f_c is f(c).
-    until abs(b - a) < epsilon or iteration > max_iterations {
-        set iteration to iteration + 1.
-        if f_c = 0 {
-            return c. // Found exact root
-        }
-        if f_a * f_c < 0 {
-            set b to c. // Root is in [a, c]
-        } else {
-            set a to c. // Root is in [c, b]
-            set f_a to f_c. // Update f(a) to the new value
-        }
-        set c to (a + b) / 2.
-        set f_c to f(c).
-        if debug {
-            // Print the current state of the bisection method.
-            print "Iteration " + iteration + ": a = " + a + ", b = " + b + ", c = " + c + ", f(c) = " + f_c + ".".
-        }
-    }
-    return c.
 }
 
 // == Keplerian orbit functions ==
@@ -148,17 +72,13 @@ function synodic_period {
     return 1 / (1 / t_orbital - 1 / t_rotation).
 }
 
-function body_rotation {
-    parameter t is time.
+// Vis-viva equation relates orbital height and speed. 
+function orbital_speed {
+    parameter alt_ is alt:radar.
     parameter orbit_ is ship:orbit.
-    // Calculate the rotation angle of the body at time t.
-    //
-    // Per https://ksp-kos.github.io/KOS/structures/celestial_bodies/body.html#attribute:BODY:ROTATIONANGLE
-    //
-    // "The rotation angle is the number of degrees between the Solar Prime Vector and the current position of the body’s prime meridian
-    //   (body longitude of zero). The value is in constant motion, and once per body’s rotation period (“sidereal day”), its :rotationangle
-    //   will wrap around through a full 360 degrees."
-    return orbit_:body:rotationangle + (360 / orbit_:body:rotationPeriod) * (t - orbit_:epoch):seconds.
+
+    local r_ to orbit_:body:radius + alt_.
+    return sqrt(orbit_:body:mu * ((2 / r_) - (1 / orbit_:semimajoraxis))).
 }
 
 // == Body position functions ==
@@ -225,6 +145,19 @@ function wrap_longitude {
     parameter lng.
     // Shift the longitude to the range [0, 360) by 180, then shift it back to the range [-180, 180) by subtracting whole multiples of 360.
     return lng - 360 * floor((lng + 180) / 360).
+}
+
+function body_rotation {
+    parameter t is time.
+    parameter orbit_ is ship:orbit.
+    // Calculate the rotation angle of the body at time t.
+    //
+    // Per https://ksp-kos.github.io/KOS/structures/celestial_bodies/body.html#attribute:BODY:ROTATIONANGLE
+    //
+    // "The rotation angle is the number of degrees between the Solar Prime Vector and the current position of the body’s prime meridian
+    //   (body longitude of zero). The value is in constant motion, and once per body’s rotation period (“sidereal day”), its :rotationangle
+    //   will wrap around through a full 360 degrees."
+    return orbit_:body:rotationangle + (360 / orbit_:body:rotationPeriod) * (t - orbit_:epoch):seconds.
 }
 
 function body_longitude {
