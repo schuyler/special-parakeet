@@ -25,19 +25,15 @@ function mean_anomaly {
     return mod(ma, 360).
 }
 
-function eccentric_anomaly {
-    parameter t is time.
+function _mean_to_eccentric_anomaly {
+    parameter M.
     parameter orbit_ is ship:orbit.
-    parameter epsilon is 0.001.
-
     // Calculate the eccentric anomaly E from the mean anomaly M using Kepler's equation.
-    local M is mean_anomaly(t, orbit_).
+    // E = M + ecc * sin(E) * (180/constant:pi)
+    // This is an iterative solution, as Kepler's equation cannot be solved algebraically.
     local ecc is orbit_:eccentricity.
 
-    // Solve Kepler's equation: M = E - ecc * sin(E)
-    // By looking for the root of f(E) = E - ecc * sin(E) - M
-    // However, the product `ecc * sin(E)` is in radians, even though E is in degrees.
-    // Since E and M are in degrees, we need to convert that term from radians to degrees, so that the units match.
+    // Function to find the root of f(E) = E - ecc * sin(E) - M
     local f is {
         parameter E.
         return E - ecc * sin(E) * (180/constant:pi) - M.
@@ -50,7 +46,26 @@ function eccentric_anomaly {
     }.
 
     // Initial guess for E is M, which is a good approximation.
-    return find_zero(f, df, M, epsilon).
+    return find_zero(f, df, M, 0.001).
+}
+
+function _eccentric_to_true_anomaly {
+    parameter E.
+    parameter orbit_ is ship:orbit.
+    // Calculate the true anomaly ν for a given eccentric anomaly E on the current orbit.
+    // True anomaly is given by: ν = 2 * arctan2(sqrt(1 + ecc) * sin(E / 2), sqrt(1 - ecc) * cos(E / 2))
+    local ecc is orbit_:eccentricity.
+    return 2 * arctan2(sqrt(1 + ecc) * sin(E / 2), sqrt(1 - ecc) * cos(E / 2)).
+}
+
+function eccentric_anomaly {
+    parameter t is time.
+    parameter orbit_ is ship:orbit.
+    parameter epsilon is 0.001.
+
+    // Calculate the eccentric anomaly E from the mean anomaly M using Kepler's equation.
+    local M is mean_anomaly(t, orbit_).
+    return _mean_to_eccentric_anomaly(M, orbit_, epsilon).
 }
 
 function true_anomaly {
@@ -58,18 +73,7 @@ function true_anomaly {
     parameter orbit_ is ship:orbit.
     // Calculate the true anomaly ν at time t for the given orbit.
     local E is eccentric_anomaly(t, orbit_).
-    local ecc is orbit_:eccentricity.
-    // True anomaly is given by: ν = 2 * arctan2(sqrt(1 + ecc) * sin(E / 2), sqrt(1 - ecc) * cos(E / 2))
-    return 2 * arctan2(sqrt(1 + ecc) * sin(E / 2), sqrt(1 - ecc) * cos(E / 2)).
-}
-
-function synodic_period {
-    parameter orbit_ is ship:orbit.
-    // Calculate the synodic period of the orbit in seconds: T_synodic = 1 / (1/T_orbital - 1/T_rotation)
-    // This is the time it takes for the craft to return to the same longitude relative to the body.
-    local t_orbital is orbit_:period.
-    local t_rotation is orbit_:body:rotationPeriod.
-    return 1 / (1 / t_orbital - 1 / t_rotation).
+    return _eccentric_to_true_anomaly(E, orbit_).
 }
 
 // Vis-viva equation relates orbital height and speed. 
@@ -81,8 +85,71 @@ function orbital_speed {
     return sqrt(orbit_:body:mu * ((2 / r_) - (1 / orbit_:semimajoraxis))).
 }
 
+// Estimate the time since periapsis based on the true anomaly.
+function time_since_periapsis {
+    parameter orbit_ is ship:orbit.
+    return orbit_:trueanomaly / 360 * orbit_:period.
+}
+
+// Estimate the time to a given altitude using the relation between orbital radius and eccentric anomaly.
+function time_to_altitude {
+    parameter alt_ is alt:radar.
+    parameter orbit_ is ship:orbit.
+
+    // Capture the true anomaly at the current time.
+    local t0 is time.
+    local nu_0 is orbit_:trueanomaly.
+
+    local r_target to orbit_:body:radius + alt_.
+    local a to orbit_:semimajoraxis.
+    local ecc to orbit_:eccentricity.
+    
+    // According to Wikipedia, r = a(1 - e cos E), which means that E = acos((a - r_) / (e * a)).
+    // https://en.wikipedia.org/wiki/Eccentric_anomaly#Radius_and_eccentric_anomaly
+    local elliptic_ratio to (a - r_target) / (ecc * a).
+
+    // Ratio clamping needed because floating point rounding at the boundary leads to arccos returning NaN
+    set elliptic_ratio to min(max(elliptic_ratio, -1), 1).
+    local E_r to arccos(elliptic_ratio). // return º
+
+    // arccos() returns [0, 180º], so we have to check if we are currently in the first or second half of the orbit.
+    // This makes sense because a spacecraft in an elliptical orbit will pass through the same altitude twice,
+    // once ascending and once descending. The edge cases are when the spacecraft is at periapsis or apoapsis,
+    // or when the orbit is circular.
+    //
+    // https://www.reddit.com/r/Kos/comments/4tm0wq/two_common_mistakes_people_make_when_calculating/
+
+    if nu_0 > 180 {
+        // If the current true anomaly is greater than 180, we are in the second half of the orbit.
+        // We need to adjust E_r to be in the range [180, 360).
+        set E_r to 360 - E_r.
+    }
+
+    // Convert E to true anomaly
+    local nu_r to _eccentric_to_true_anomaly(E_r, orbit_).
+
+    // It's possible that we've passed the target altitude already, so we need to check if the target true anomaly.
+    // is less than the current one.
+    if nu_r < orbit_:trueanomaly {
+        // If it is, we need to add 360 to get the correct time to the target altitude.
+        set nu_r to nu_r + 360.
+    }
+    
+    // Now we can be certain that the difference in true anomaly is positive.
+    local d_nu to nu_r - nu_0.
+    
+    // Calculate the time to the target altitude based on the mean motion.
+    local dt_target to d_nu / 360 * orbit_:period.
+
+    // Return the time to the target altitude.
+    return t0 + dt_target.
+}
+
+
 // == Body position functions ==
 
+// The axis of the orbit is the vector that is perpendicular to the orbital plane.
+// This is also the angular momentum vector of the orbit, which is constant in KSP.
 function orbital_axis {
     parameter orbit_.
     local pos to orbit_:position - orbit_:body:position.  // Position of the ship in SOI-RAW coordinates.
@@ -90,6 +157,7 @@ function orbital_axis {
     return vcrs(pos, vel):normalized.
 }
 
+// Compute the state vector of the ship at a given time t in the orbit's SOI-RAW coordinates.
 function orbit_at {
     parameter t is time.
     parameter orbit_ is ship:orbit.
@@ -145,6 +213,15 @@ function wrap_longitude {
     parameter lng.
     // Shift the longitude to the range [0, 360) by 180, then shift it back to the range [-180, 180) by subtracting whole multiples of 360.
     return lng - 360 * floor((lng + 180) / 360).
+}
+
+function synodic_period {
+    parameter orbit_ is ship:orbit.
+    // Calculate the synodic period of the orbit in seconds: T_synodic = 1 / (1/T_orbital - 1/T_rotation)
+    // This is the time it takes for the craft to return to the same longitude relative to the body.
+    local t_orbital is orbit_:period.
+    local t_rotation is orbit_:body:rotationPeriod.
+    return 1 / (1 / t_orbital - 1 / t_rotation).
 }
 
 function body_rotation {
