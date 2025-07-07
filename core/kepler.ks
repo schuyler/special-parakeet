@@ -85,11 +85,28 @@ function orbital_speed {
     return sqrt(orbit_:body:mu * ((2 / r_) - (1 / orbit_:semimajoraxis))).
 }
 
-// Estimate the time since periapsis based on the true anomaly.
-function time_since_periapsis {
+// Simple free fall calculation to a given altitude.
+function free_fall_time {
+    parameter target_alt is 0.
     parameter orbit_ is ship:orbit.
-    return orbit_:trueanomaly / 360 * orbit_:period.
+
+    local pos to orbit_:position - orbit_:body:position. // Position of the ship in SOI-RAW coordinates.
+    local current_alt is pos:mag.
+    local d_fall is pos:magnitude - target_alt.
+    
+    // Average g over the fall distance
+    local g_ is body:mu / ((body:radius + (current_alt + target_alt) / 2) ^ 2).
+
+    // Get the vertical component of the velocity vector.
+    local surface_v is orbit_:velocity:surface.
+    local up_v to pos:normalized.
+    local v_ to vdot(surface_v, up_v).
+
+    // The time to fall is given by the equation: t = -(v - sqrt(2 * g * d)) / g.
+    // Which is given by solving the (quadratic) equation of motion under constant acceleration for t.
+    return -(v_ - sqrt(2 * g_ * d_fall)) / g_.
 }
+
 
 // Estimate the time to a given altitude using the relation between orbital radius and eccentric anomaly.
 function time_to_altitude {
@@ -103,7 +120,7 @@ function time_to_altitude {
     local r_target to orbit_:body:radius + alt_.
     local a to orbit_:semimajoraxis.
     local ecc to orbit_:eccentricity.
-    
+
     // According to Wikipedia, r = a(1 - e cos E), which means that E = acos((a - r_) / (e * a)).
     // https://en.wikipedia.org/wiki/Eccentric_anomaly#Radius_and_eccentric_anomaly
     local elliptic_ratio to (a - r_target) / (ecc * a).
