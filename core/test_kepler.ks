@@ -1,4 +1,5 @@
 
+cd(scriptPath():parent).
 runpath("kepler.ks").
 
 function test_mean_anomaly_at_epoch {

@@ -1,7 +1,7 @@
 // Functions related to Keplerian orbits
 // https://ksp-kos.github.io/KOS/structures/orbits/orbit.html
 
-cd(scriptPath:parent).
+cd(scriptPath():parent).
 runoncepath("optimize.ks").
 
 // == Helper functions ==
@@ -46,7 +46,7 @@ function _mean_to_eccentric_anomaly {
     }.
 
     // Initial guess for E is M, which is a good approximation.
-    return find_zero(f, df, M, 0.001).
+    return find_zero(f, df, M, 0.01).
 }
 
 function _eccentric_to_true_anomaly {
@@ -61,11 +61,10 @@ function _eccentric_to_true_anomaly {
 function eccentric_anomaly {
     parameter t is time.
     parameter orbit_ is ship:orbit.
-    parameter epsilon is 0.001.
 
     // Calculate the eccentric anomaly E from the mean anomaly M using Kepler's equation.
     local M is mean_anomaly(t, orbit_).
-    return _mean_to_eccentric_anomaly(M, orbit_, epsilon).
+    return _mean_to_eccentric_anomaly(M, orbit_).
 }
 
 function true_anomaly {
