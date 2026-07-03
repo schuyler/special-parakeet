@@ -20,7 +20,9 @@ Install **kOS** (it's on CKAN, or [GitHub](https://ksp-kos.github.io/KOS/)). It 
 - **A terminal.** Right-click the part in flight, choose *Open Terminal*, and you get a green-on-black console that would make a 1970s NASA engineer feel at home.
 - **A place for scripts.** Files live in `Ships/Script/` inside your KSP folder — that's the *archive*, which your ships can read from at the KSC. Write code in any text editor you like.
 
-Build the simplest possible test stand: a **command pod, a parachute, and the CX-4181**. No engines yet. Put it on the launchpad and open the terminal.
+One more thing before we build: nobody is riding this rocket. Flights in this book are **uncrewed** until the software has earned a passenger — the computer is the crew, which is the whole premise. (This is also roughly how NASA did it.)
+
+Build the simplest possible test stand: an **OKTO probe core, a small battery, a parachute, and the CX-4181**. No engines yet. Put it on the launchpad and open the terminal.
 
 ## Conversations with a spacecraft
 
@@ -122,7 +124,8 @@ A `LOCK` is a little machine that runs continuously. When you lock the steering,
 
 Time for engines. Build the classic trainer:
 
-- **Mk1 Command Pod**, with a **Mk16 Parachute** on top
+- **OKTO probe core**, with a **Mk16 Parachute** on top
+- **Z-200 battery** (dead probes take no data)
 - **CX-4181** computer (radially, anywhere)
 - **FL-T400 fuel tank**
 - **LV-T45 "Swivel"** engine
