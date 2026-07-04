@@ -114,6 +114,11 @@ part structure and mission milestones.
     landing with Claude's help. Treated as a draft of the trail the book now blazes
     deliberately; mined, never edited. Full commit history for all reference material
     lives on the `main` and `main_v2` branches.
+  - `reference/variants/` — divergent versions of scripts that were independently modified
+    on other branches: `next.ks` is the tutorial-branch refinement (auto-staging block
+    removed, finer maneuver control); `land_at_periapsis.ks` is main's shorter
+    pre-main_v2 version (131 lines vs. main_v2's 273-line rewrite). Kept because the
+    progression between drafts is book material.
 
 ### Source-material map (scripts → chapters)
 
