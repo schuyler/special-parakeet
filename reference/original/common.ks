@@ -37,6 +37,39 @@ function engine_isp {
   return 0.
 }
 
+// Find the zero crossing of a function
+function find_zero_crossing {
+  parameter func, a, b.
+  parameter epsilon is 0.2.
+  parameter nmax is 1000.
+  
+  local fa is func(a).
+  local fb is func(b).
+  
+  // Handle edge cases
+  if fa <= 0 { return a. }     // Already at/below surface at start
+  if fb > 0 { return b. }      // Still above surface at end (no impact)
+  
+  local n is 0.
+  until n > nmax or abs(b - a) < epsilon {
+    local mid is (a + b) / 2.
+    local fmid is func(mid).
+    
+    // Early termination if we hit the surface
+    if fmid <= 0 {
+      return mid.
+    }
+    
+    // Zero crossing must be between mid and b (right half)
+    set a to mid.
+    set fa to fmid.
+    set n to n + 1.
+  }
+  
+  return (a + b) / 2.
+}
+
+
 // Rocket equation
 function burn_duration {
   parameter delta_v.
@@ -191,16 +224,16 @@ function execute_node {
 // === LANDING CALCULATION ===
 
 function time_to_surface {
-  parameter t.
+  parameter t is time:seconds.
   local pos is positionat(ship, t).
   local alt_ is (pos - body:position):mag - body:radius.
-  local h is alt_ - body:geopositionof(pos):terrainheight.
+  local h is max(0, alt_ - body:geopositionof(pos):terrainheight).
   local surface_v is velocityat(ship, t):surface.
   local up_v to (pos - body:position):normalized.
-  local v_ to vdot(surface_v, up_v) * up_v.
-  local v_mag to v_:mag.
-  local g_ is body:mu / (body:radius ^ 2).
-  return (-v_mag + sqrt(max(v_mag ^ 2 + 2 * g_ * h, 0))) / g_.
+  local v_ to vdot(surface_v, up_v).
+  //print "v_: " + v_ + "  verticalSpeed: " + verticalSpeed + "   " at (1,32).
+  local g_ is body:mu / ((body:radius + alt_) ^ 2).
+  return (-v_ + sqrt(2 * g_ * h)) / g_.
 }
 
 function above_terrain {

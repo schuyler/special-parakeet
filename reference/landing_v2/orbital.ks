@@ -1,5 +1,7 @@
 @lazyglobal off.
 
+run "orbit_at_t".
+
 // --- ORBITAL COMPUTATION
 
 // How far have we come around the orbit in angular units at time t, since last
@@ -18,7 +20,7 @@ function mean_anomaly_at_t { // return [0, 360)º
 function is_ascending {
   parameter ob is ship:orbit.
   parameter t is timestamp().
-  return mean_anomaly_at_t(t) < 180. // before apoapsis
+  return mean_anomaly_at_t(ob, t) < 180. // before apoapsis
 }
 
 // Estimate the time since periapsis.
@@ -90,7 +92,7 @@ function mean_anomaly_at_r {
 function time_to_altitude {
   parameter ob is ship:orbit.
   parameter target_alt is ob:periapsis.
-  parameter ascending is false.
+  parameter ascending is is_ascending(ob).
 
   // Get the mean anomaly at the specified time.
   local m0 to mean_anomaly_at_t(ob).
@@ -121,46 +123,7 @@ function time_to_altitude {
   return dt.
 }
 
-// Estimate how long it will take to cross a particular meridian on the parent
-// body... assuming the orbit is equatorial ... :D :D :D *sob*
-//
-function time_to_meridian {
-  parameter orbit_ is ship:orbit.
-  parameter given_lng is 0.
-
-  local geo_pos to orbit_:body:geopositionof(orbit_:position).
-  print "given: " + round(given_lng, 3) + " pos: " + round(geo_pos:lng, 3).
-  local d_lng to given_lng - geo_pos:lng.
-  if d_lng < 0 {
-    set d_lng to d_lng + 360.
-  }
-  print "d_lng = " + round(d_lng, 3).
-  // not sure this rotation accounting is correct
-  local dt to orbit_:period * (1 + orbit_:period / orbit_:body:rotationperiod) * (d_lng / 360).
-  print "meridian reached in " + round(dt, 3) + "s".
-  return timespan(dt).  
-}
-
 // --- kOS ORBIT HELPERS
-
-// Give us a kOS Orbit object as if orbiter were at a different point in its
-// orbit right now. This feels like it shouldn't work.
-//
-function orbit_at { // return Orbit
-  parameter ob is ship:orbit.
-  parameter t is timestamp().
-  return createorbit(
-    ob:inclination,
-    ob:eccentricity,
-    ob:semimajoraxis,
-    ob:lan,
-    ob:argumentofperiapsis,
-    // as if the orbiting body were at that point in the orbit
-    mean_anomaly_at_t(ob, t),
-    // ... but right now :D
-    time:seconds,
-    ob:body).
-}
 
 // What's the altitude of that orbit at time t?
 // This is defined on Orbitables but not Orbits, so we cheat.
@@ -168,7 +131,7 @@ function orbit_at { // return Orbit
 function altitude_at { // return m above sea level
   parameter ob0 is ship:orbit.
   parameter t is timestamp().
-  local ob to orbit_at(ob0, t).
+  local ob to orbit_at_t(ob0, t).
   return ob:body:altitudeof(ob:position).
 } 
 
@@ -177,6 +140,38 @@ function altitude_at { // return m above sea level
 function geoposition_at {
   parameter ob0 is ship:orbit.
   parameter t is timestamp().
-  local ob to orbit_at(ob0, t).
+  local ob to orbit_at_t(ob0, t).
   return ob:body:geopositionof(ob:position).
+}
+
+
+// -- TEST FUNCTION
+
+function test_orbital {
+  until false {
+    clearscreen.
+    local t to timestamp().
+
+    local alt_ to altitude_at(orbit, t).
+    print "Current altitude: " + round(alt_) + " m".
+  
+    local alt2 to altitude_at(orbit, t + 60).
+    print "Altitude in 60s: " + round(alt2) + " m".
+
+    local s to orbital_speed(orbit, alt_).
+    print "Orbital speed: " + round(s, 1) + " m/s".
+
+    local m to mean_anomaly_at_t(orbit, t).
+    print "Mean anomaly based on time: " + round(m, 3) + "º".
+    set m to mean_anomaly_at_r(orbit, alt_ + body:radius).
+    print "Mean anomaly based on altitude: " + round(m[0], 3) + "ª " + round(m[1], 3) + "º".
+
+    local dt to time_to_altitude(orbit, orbit:apoapsis).
+    print "Time to apoapsis: " + dt:minute + ":" + dt:second.
+    print "".
+    set dt to time_to_altitude(orbit, orbit:periapsis).
+    print "Time to periapsis: " + dt:minute + ":" + dt:second.
+
+    wait 1.
+  }
 }
