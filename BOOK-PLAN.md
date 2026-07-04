@@ -190,7 +190,13 @@ later, better draft; the book can show the progression where instructive.
     Claude. The book now blazes that trail deliberately, using main_v2 as a reference draft.
   - `reference/wip/test_free_fall.ks` added as a tracked file (was untracked before).
   - Source-material map updated to reflect the new paths and the additional files.
-  - This commit will land on `main` via squash merge after Schuyler's review.
+  - `reference/variants/` preserves divergent script versions (tutorial-branch `next.ks`,
+    main's shorter `land_at_periapsis.ks`) — draft progression is book material.
+  - Landed on `main` (squash `a970b4c` + cleanup `cf5da77` removing post-fork duplicates
+    the 3-way merge kept: root `landing/`, `deorbit_node.ks`, `predict_landing.ks`,
+    `set_inclination.ks` — all byte-identical to their `reference/` copies). `main_v2`
+    kept for history; the book mines its commit log. Development continues on the
+    tutorial branch; land on `main` via squash merge at future checkpoints.
 - **Pending review:** Chapter 1 voice — awaiting `schuyler-docs` skill contents before restyle.
 - **Next up:** Chapters 2 (telemetry library — first real `lib/` code) and 3 (rocket equation,
   derived and measured). Create `lib/` and `missions/` alongside.
