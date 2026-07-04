@@ -84,28 +84,45 @@ function orbital_speed {
     return sqrt(orbit_:body:mu * ((2 / r_) - (1 / orbit_:semimajoraxis))).
 }
 
-// Simple free fall calculation to a given altitude.
+// Calculate the radial and tangential components of a given velocity vector in the orbit's SOI-RAW coordinates.
+function orbital_velocity {
+    parameter vel is ship:velocity:orbit.
+    parameter orbit_ is ship:orbit.
+    local v_up to (orbit_:position - orbit_:body:position):normalized.
+    local v_radial to vdot(vel, v_up) * v_up.
+    local v_tangent to vel - v_radial.
+    return lexicon(
+        "radial", v_radial,
+        "tangent", v_tangent
+    ).
+}
+
+// Calculate the time to fall to a given altitude. This uses a kinematic equation for free fall,
+// and is much cheaper to calculate than using orbital mechanics as in `time_to_altitude`.
+// But they should give similar results for small altitudes.
 function free_fall_time {
     parameter target_alt is 0.
     parameter orbit_ is ship:orbit.
 
-    local pos to orbit_:position - orbit_:body:position. // Position of the ship in SOI-RAW coordinates.
-    local current_alt is pos:mag.
-    local d_fall is pos:magnitude - target_alt.
-    
-    // Average g over the fall distance
-    local g_ is body:mu / ((body:radius + (current_alt + target_alt) / 2) ^ 2).
+    // Kinematic equation for free fall: d = v0 * t - 0.5 * g * t^2
+    // Solving for t gives us: t = (sqrt(v0^2 + 2 * g * d) - v0) / g
 
-    // Get the vertical component of the velocity vector.
-    local surface_v is orbit_:velocity:surface.
-    local up_v to pos:normalized.
-    local v_ to vdot(surface_v, up_v).
+    local current_alt to orbit_:body:altitudeof(orbit_:position).
+    local d to current_alt - target_alt.
 
-    // The time to fall is given by the equation: t = -(v - sqrt(2 * g * d)) / g.
-    // Which is given by solving the (quadratic) equation of motion under constant acceleration for t.
-    return -(v_ - sqrt(2 * g_ * d_fall)) / g_.
+    // Get the vertical component of the velocity vector in the orbit's SOI-RAW coordinates.
+    local v_up to (orbit_:position - orbit_:body:position):normalized.
+    local v0 to vdot(orbit_:velocity:surface, v_up).
+
+    // v0 is negative when descending, so we treat g as having a negative sign also.
+    local g_ is -body:mu / ((body:radius + (target_alt + current_alt) / 2) ^ 2).
+
+    // print "v0: " + round(v0, 1) + " m/s.".
+    // print "g: " + round(g_, 1) + " m/s²".
+    // print "d: " + round(d, 1) + " m.".
+
+    return (-v0 - sqrt(v0^2 - 2 * g_ * d)) / g_.
 }
-
 
 // Estimate the time to a given altitude using the relation between orbital radius and eccentric anomaly.
 function time_to_altitude {
