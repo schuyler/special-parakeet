@@ -30,13 +30,7 @@ set flowRate to thrust / (en:isp * constant:g0).
 set burn_time to (wMass - dMass) / flowRate.
 
 print "Burn will take " + round(burn_time) + "s.".
-
-set prepare_time to nd:time - burn_time / 2 - 60.
-if prepare_time > time:seconds {
-  warpto(prepare_time).
-}
-
-print "Preparing to burn.".
+print "Aligning to burn direction.".
 
 lock np to nd:deltav. //points to node, don't care about the roll direction.
 lock steering to np.
@@ -44,14 +38,28 @@ lock steering to np.
 //now we need to wait until the burn vector and ship's facing are aligned
 wait until vang(np, ship:facing:vector) < 0.25.
 
+print "Warping to burn start.".
+
+set prepare_time to nd:time - burn_time / 2 - 60.
+if prepare_time > time:seconds {
+  warpto(prepare_time).
+}
+
+// wait for realignment
+print "Realigning.".
+lock steering to np.
+wait until vang(np, ship:facing:vector) < 0.25.
+
+print "Waiting for burn start.".
+
 //the ship is facing the right direction, let's wait for our burn time
 wait until nd:eta <= (burn_time/2).
 
 //we only need to lock throttle once to a certain variable in the beginning of the loop, and adjust only the variable itself inside it
+print "Start burn.".
+
 set tset to 0.
 lock throttle to tset.
-
-print "Start burn.".
 
 set done to False.
 //initial deltav
@@ -85,6 +93,11 @@ until done
         lock throttle to 0.
         print "End burn, remain dv " + round(nd:deltav:mag,1) + "m/s, vdot: " + round(vdot(dv0, nd:deltav),1).
         set done to True.
+    }
+
+    if ship:availableThrust <= 0 {
+      stage.
+      wait 0.
     }
 }
 unlock steering.

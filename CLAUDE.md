@@ -2,8 +2,10 @@
 
 This repository hosts two things:
 
-1. **Schuyler's original kOS scripts** (root `*.ks` files) — working reference material.
-   Do not edit these; the book mines them.
+1. **Reference material** (`reference/`) — frozen kOS scripts; do not edit, only mine.
+   `reference/original/` holds Schuyler's original working scripts (formerly root `*.ks` files).
+   `reference/core/`, `reference/landing_v2/`, `reference/wip/`, `reference/script/` are
+   main_v2's draft library (later material; treated as a draft to mine).
 2. **The book** — reader-facing chapters in `wiki/`, library code in `lib/`, per-chapter
    mission scripts in `missions/`.
 

@@ -106,13 +106,22 @@ part structure and mission milestones.
   are introduced by chapter; appendix B tracks which chapter introduced what.
 - `missions/chNN/` — per-chapter mission scripts (the scripts the reader writes/runs in that
   chapter, at that chapter's level of sophistication).
-- Root `*.ks` files — **Schuyler's original working scripts.** Source material, kept for
-  reference ("here for the nonce"); the book code is a fresh, pedagogically-ordered rebuild.
-  Do not edit these; mine them.
+- `reference/` — **frozen source material; do not edit, only mine.**
+  - `reference/original/` — Schuyler's original working kOS scripts (formerly the root
+    `*.ks` files). The book code is a fresh, pedagogically-ordered rebuild from these.
+  - `reference/core/`, `reference/landing_v2/`, `reference/wip/`, `reference/script/` —
+    main_v2's draft library: Schuyler's first pass at Keplerian mechanics and precision
+    landing with Claude's help. Treated as a draft of the trail the book now blazes
+    deliberately; mined, never edited. Full commit history for all reference material
+    lives on the `main` and `main_v2` branches.
 
-### Source-material map (root scripts → chapters)
+### Source-material map (scripts → chapters)
 
-| Existing script(s) | Feeds chapter(s) | Notes |
+Unless otherwise noted, paths below are relative to `reference/original/`. Where
+`reference/original/` and `reference/core/` cover the same topic, `core/` is the
+later, better draft; the book can show the progression where instructive.
+
+| Script(s) | Feeds chapter(s) | Notes |
 |---|---|---|
 | `telemetry.ks`, `resources.ks` | 2 | logging approach |
 | `common.ks` (`burn_duration`, rocket eq.) | 3, 6 | has a "confirm this math" TBD — becomes an exercise |
@@ -120,14 +129,20 @@ part structure and mission milestones.
 | `common.ks` (`orbital_speed` vis-viva), `orbital.ks` | 5, 8 | |
 | `common.ks` (`execute_node`, `node_from_velocity`), `circularize.ks` | 6 | node execution incl. coordinate-frame rotation |
 | `set_periapsis.ks`, `move_periapsis.ks` | 7 | |
+| `set_inclination.ks` | 7 | plane-change maneuver; fits ch. 7 (orbital transfers) rather than ch. 9 (rendezvous) because inclination change is a purely Hohmann-adjacent maneuver with no phasing |
 | `kepler.ks`, `orbital.ks` (anomalies) | 8 | `kepler.ks` header ("don't need it, see orbit.ks") is itself a good pedagogical beat: derive by hand, then learn what the API gives you |
 | `intercept.ks`, `next.ks`, `wait_for_launch.ks` | 9 | |
 | `dock.ks`, `dock2.ks`, `fuelxfer.ks` | 10 | |
-| `deorbit*.ks`, `landing.ks`, `land_at_periapsis.ks`, `common.ks` (`time_to_surface`, `landing_time` Newton iteration) | 11–12 | the terrain-height Newton iteration is exactly the "numerical methods where closed form runs out" lesson |
+| `deorbit.ks`, `deorbit_simple.ks`, `deorbit_node.ks`, `drop_periapsis.ks`, `landing.ks`, `land_at_periapsis.ks`, `common.ks` (`time_to_surface`, `landing_time` Newton iteration) | 11–12 | the terrain-height Newton iteration is exactly the "numerical methods where closed form runs out" lesson |
+| `predict_landing.ks` | 11–12 | early landing-site prediction; compare to `reference/landing_v2/` for the improved approach |
 | `boostback.ks` | 12 (divert/targeting), sidebar Falcon | |
 | `aero.ks` | 14 | lift/drag computation |
 | `ssto.ks`…`ssto4.ks` | 17–18 | the iteration story of ch. 18 |
 | `reentry.ks`, `aerobrake.ks` | 20 | |
+| `reference/core/kepler.ks`, `reference/core/test_kepler.ks` | 8, 11 | `time_to_altitude` and `free_fall_time` rewrites; `test_kepler.ks` is the companion test harness |
+| `reference/core/maneuver.ks`, `reference/core/optimize.ks`, `reference/core/rocket.ks`, `reference/core/impact.ks` | 3, 6, 11–12 | maneuver planning and impact/landing math from the main_v2 draft |
+| `reference/landing_v2/` (all files) | 11–12 | complete deorbit-burn calculation; datum/terrain impact prediction via Newton iteration; `minimize.ks`; `time_to_closest_approach.ks`; reworked landing state machine — this is the deeper draft of the ch. 11–12 material |
+| `reference/wip/test_free_fall.ks` | 11 | test harness for `free_fall_time`; shows expected vs. measured values for the Newton-iteration approach |
 
 ## Style
 
@@ -162,6 +177,15 @@ part structure and mission milestones.
 - **Done:** outline settled through the decisions recorded above; `wiki/Home.md` (front page +
   full TOC); `wiki/Chapter-01-The-Flight-Computer.md` drafted (uncrewed OKTO trainer; gravity
   experiment; `liftoff.ks`).
+- **Done (this session):** repository reorganization — legacy code frozen under `reference/`:
+  - `reference/original/` holds Schuyler's original root `*.ks` scripts (removed from root).
+  - `reference/core/`, `reference/landing_v2/`, `reference/wip/`, `reference/script/` bring
+    in main_v2's draft library. Decision: main_v2 is a draft to mine, not finished code —
+    it represents Schuyler's first pass at Keplerian mechanics and precision landing with
+    Claude. The book now blazes that trail deliberately, using main_v2 as a reference draft.
+  - `reference/wip/test_free_fall.ks` added as a tracked file (was untracked before).
+  - Source-material map updated to reflect the new paths and the additional files.
+  - This commit will land on `main` via squash merge after Schuyler's review.
 - **Pending review:** Chapter 1 voice — awaiting `schuyler-docs` skill contents before restyle.
 - **Next up:** Chapters 2 (telemetry library — first real `lib/` code) and 3 (rocket equation,
   derived and measured). Create `lib/` and `missions/` alongside.
