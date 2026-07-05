@@ -1,0 +1,8 @@
+# Schuyler's user-global gitignore excludes .claude/ entirely, but this repo
+# vendors the book's writing-voice skill there and remote sessions need it from
+# a clone. Re-include only .claude/skills/; everything else under .claude/
+# (settings.local.json etc.) stays ignored.
+!.claude/
+.claude/*
+!.claude/skills/
+!.claude/settings.json

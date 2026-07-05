@@ -195,4 +195,4 @@ The ship told us its altitude and speed, and we took the numbers at face value. 
 
 ---
 
-*[Home](Home.md) · Next: Chapter 2 — Reading the Instruments*
+*[Home](Home.md) · Next: [Chapter 2 — Reading the Instruments](Chapter-02-Reading-the-Instruments.md)*

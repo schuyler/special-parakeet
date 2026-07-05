@@ -39,8 +39,8 @@ Vehicle design is in scope the whole way. This is aerospace engineering in the f
 | # | Chapter | The science | The code |
 |---|---------|-------------|----------|
 | 1 | [The Flight Computer](Chapter-01-The-Flight-Computer.md) | Newton's law of gravitation; what *g* really is | First scripts; the terminal; `LOCK`; staging under program control |
-| 2 | Reading the Instruments | Position, velocity, and acceleration as vectors; reference frames (why "surface speed" and "orbital speed" disagree); the atmosphere as a function of altitude | `lib/telemetry.ks` — logging flight data to files and graphing it |
-| 3 | The Tyranny of the Rocket Equation | Momentum, mass ratio, specific impulse; deriving Tsiolkovsky's equation — then *measuring* it from your own sounding-rocket telemetry. Also: the first hint of why a single-stage spaceplane shouldn't be possible | `lib/rocket.ks` — TWR, stage delta-v, burn durations |
+| 2 | [Reading the Instruments](Chapter-02-Reading-the-Instruments.md) | Position, velocity, and acceleration as vectors; reference frames (why "surface speed" and "orbital speed" disagree); the atmosphere as a function of altitude | `lib/telemetry.ks` — logging flight data to files and graphing it |
+| 3 | [The Tyranny of the Rocket Equation](Chapter-03-The-Tyranny-of-the-Rocket-Equation.md) | Momentum, mass ratio, specific impulse; deriving Tsiolkovsky's equation — then *measuring* it from your own sounding-rocket telemetry. Also: the first hint of why a single-stage spaceplane shouldn't be possible | `lib/rocket.ks` — TWR, stage delta-v, burn durations |
 
 ### Part II — Getting to Orbit
 

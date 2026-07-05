@@ -151,11 +151,11 @@ later, better draft; the book can show the progression where instructive.
 
 ## Style
 
-- Voice target: **Schuyler's `schuyler-docs` skill** — direct, conversational, honest about
-  limitations, dry humor that never crowds out technical content. STATUS: the skill is enabled
-  on claude.ai but NOT loadable from remote sessions. TODO: add it to this repo under
-  `.claude/skills/schuyler-docs/` (or paste contents in-session), then restyle `wiki/Home.md`
-  and Chapter 1, which were drafted before the skill was known.
+- Voice target: **`schuyler-docs`** — direct, conversational, honest about limitations, dry
+  humor that never crowds out technical content. Vendored into this repo at
+  `.claude/skills/schuyler-docs/SKILL.md`, adapted for discursive tutorial prose (the global
+  original targets READMEs/reference docs). TODO: restyle `wiki/Home.md` and Chapter 1,
+  which were drafted before the skill was known.
 - kOS code shown with trailing periods; terminal-typed commands shown as typed.
 - Worked examples use Kerbin numbers (radius 600 km, μ = 3.5316×10¹² m³/s², g = 9.81 m/s²);
   compare to real-world values where it illuminates.
@@ -164,11 +164,133 @@ later, better draft; the book can show the progression where instructive.
 - Chapters end with **exercises** (some load-bearing for later chapters) and a **What's next**
   hook.
 
+## Drafting: process and voice
+
+How chapter prose gets written. Adapted from the drafting conventions of Schuyler's theremin
+tutorial wiki, which were developed against the same failure mode: prose composed *as a
+document* goes turgid — define-first, nominal, stiff — no matter what the style guide says.
+The fix is structural, not exhortative.
+
+**Chapters are drafted collaboratively, a section at a time.** Propose the chapter's structure
+first, then work section by section — draft, Schuyler reads and asks questions, refine, move
+on. Don't draft a whole chapter cold and hand it over.
+
+**Code before prose.** The lib/ routines and mission scripts a chapter presents are written
+and tested first. The prose walks through working code; it never narrates code that doesn't
+exist yet.
+
+**The one instruction: write it the way you'd say it out loud** — explain the section to a
+sharp friend across a table, then tidy that into prose. A clear spoken explanation and a
+stiff page are the same content written two ways; the difference is whether it was said or
+composed.
+
+### Answer, don't author
+
+The core protocol. **Never generate prose from an instruction containing "write the
+section/chapter/draft"** — that phrasing triggers document register and the output stiffens
+regardless of style instructions. Generate every section as a spoken answer instead. The
+template, filled in per section:
+
+> A reader has just finished [previous chapter/section] and asks: **"‹the question this
+> section exists to answer›"**
+>
+> Below are the closing paragraphs of what they just read. Answer their question in ‹2–3›
+> paragraphs, in the same voice, continuing directly from this opening sentence:
+>
+> **"‹one in-voice opening sentence, agreed in chat›"**
+>
+> ‹final 2–3 paragraphs of the previous chapter/section, pasted verbatim›
+>
+> No headings, no links, no closing summary. When you would stop talking, stop writing.
+
+When a section presents code, paste the tested script (or excerpt) into the prompt as part
+of the materials — the answer walks through it. Code blocks may appear in the answer;
+headings and links may not.
+
+Then two mechanical follow-ups, as separate turns — never merged into the generation:
+
+1. **Say-aloud pass:** "Rewrite any sentence you wouldn't say out loud to a colleague.
+   Change nothing else."
+2. **Structure pass** (after approval): add headings, relative links, exercises,
+   "In the real world" sidebars, and the "What's next" hook to the approved text without
+   altering a sentence.
+
+The question slot supplies the addressee, the pasted paragraphs and opening sentence prime
+the register by continuation rather than instruction, and quarantining structure keeps the
+"document" trigger out of the composition step entirely.
+
+### The process
+
+1. **Read the neighbors first.** Before drafting a line, read the previous chapter (all of
+   it if practical; at minimum its back half) — the committed prose, not its TOC row. It carries what's
+   already established and, just as much, the *voice* to match. Reconstructing the tone from
+   this plan instead of from the actual chapters stiffens the prose every time.
+2. **Anchor to the mission.** Say what the reader needs the chapter for in the build toward
+   SSTO. That decides scope — keep what's load-bearing, cut the true-but-tangential.
+3. **Draft by ear.** Each section: concrete scene first (a flight, a number from the
+   terminal, a thing that just exploded), name the abstraction once it's visible, stop when
+   the point is made.
+4. **Tidy lightly.** Clean the spoken version into prose; don't recompose it into page voice.
+5. **Read it back as a reader** — would I say this sentence to a person? If not, it's genre
+   voice. Cut or rewrite.
+
+### Diagnostics
+
+For when a sentence clunks — not a pre-flight checklist. Drafting with this list in mind is
+itself the self-consciousness that stiffens prose. Write by ear; reach for these only to
+name a fault already felt:
+
+- **Concrete before abstract.** Show an instance; name the concept after. Never open a
+  paragraph by characterizing what an abstract thing *is*.
+- **Only as deep as the job needs.** Knotted prose usually means discharging a subtlety the
+  chapter doesn't require — cut the ambition and the sentence relaxes.
+- **Don't narrate the prose, teach the subject.** No "this chapter does X," no "this unlocks
+  Y later," no who-this-is-for openers, no teacherly signposting ("for now, just the
+  framing"). Headings are the transitions — don't restate them. The tell: if a sentence is
+  just as true with the subject swapped out, it's describing, not teaching.
+- **Negation must clear a *real* misconception.** Correct a model the reader actually
+  arrives with (more-boosters-fixes-everything ✓); don't invent one to swat. The tell: can
+  you name someone who believed it?
+- **Don't certify your own honesty or emphasis.** No "the honest picture," "to be clear,"
+  "genuinely," "this matters." Earn it in the statement; don't assert it.
+- **Defer with an inline link on a real claim,** not a standalone pointer. "That falloff is
+  [the rocket equation](Chapter-03…), next chapter" works; "See Chapter 3 for more" doesn't.
+- **Person splits by location.** *You* at the keyboard and in the game — the reader's
+  actions on their own rocket in their own save ("you stage," "your log"). *We* at the
+  whiteboard — the shared intellectual work of derivations and design reasoning ("we need
+  momentum," "we can budget this burn"). Procedural imperatives stay imperative ("stage,"
+  "lock steering to up"). What's banned in *both* registers is the promissory, teacherly
+  address the theremin wiki's we-only rule was actually targeting: "you'll build," "you
+  will learn," narrating the reader's future experience instead of teaching. (The we-only
+  rule itself is not imported: the theremin wiki documents a shared bench, where "our hand
+  near the antenna" is nearly literal; this book's reader is alone in the cockpit, and the
+  spoken answers the drafting protocol produces naturally address a "you.")
+
+## Chapter stubs
+
+Every undrafted chapter at the frontier (the next one or two chapters) gets a stub page in
+`wiki/`, linked from the TOC. A stub carries:
+
+- **Position** — part and neighbors in the arc.
+- **Scope** — the science/code/mission contract, from the TOC row, in a sentence or two.
+- **Reader's question** *(provisional)* — the question the chapter exists to answer, posed
+  by a reader who just finished the previous chapter. This fills the addressee slot in the
+  answer-don't-author template.
+- **Likely follow-ups** *(candidates)* — one fills the addressee slot per section at draft
+  time; not required coverage.
+- **Deferred here** — debts this chapter pays: claims and forward references from other
+  chapters that land on this page for their justification.
+
+Stubs roll forward as the frontier moves; a stub graduates by being drafted over. Don't stub
+the whole TOC — reader's questions written twenty chapters ahead of the prose are
+speculation, not planning.
+
 ## Working agreements (for future sessions)
 
 - Branch: `claude/kerbal-aerospace-tutorial-q6gs9o`. Commit and push at natural checkpoints.
-- Workflow per chapter: draft → Schuyler reviews → revise. Don't mass-produce chapters ahead
-  of review; voice calibration is still in progress.
+- Workflow per chapter: stub → section-by-section drafting per "Drafting: process and voice"
+  above → Schuyler reviews → revise. Don't mass-produce chapters ahead of review; voice
+  calibration is still in progress.
 - When a chapter introduces library code, add it to `lib/` and the mission scripts to
   `missions/chNN/` in the same commit as the chapter text.
 - Keep `wiki/Home.md`'s TOC consistent with this document; if structure changes, update both
@@ -177,7 +299,34 @@ later, better draft; the book can show the progression where instructive.
 
 ## Status
 
-*Last updated: 2026-07-03*
+*Last updated: 2026-07-05*
+
+- **Done (2026-07-05):** drafting conventions adapted from the theremin tutorial wiki's
+  drafting process (its `Agent_Guide` and `Tutorial/Overview` pages):
+  - New "Drafting: process and voice" section above — the answer-don't-author protocol
+    (the load-bearing piece), the five-step process, and the clunk diagnostics. The
+    template ordering follows the theremin source verbatim; a reviewer argued the pasted
+    paragraphs should precede the opening sentence — declined for fidelity, revisit if
+    chapter 2 drafting shows the ordering matters.
+  - New "Chapter stubs" convention (frontier-only); stubs created for chapters 2–3 and
+    linked from the TOC and chapter 1's footer.
+  - **Person rule decided** (litigated with Schuyler): *you* at the keyboard, *we* at the
+    whiteboard, imperatives stay imperative, promissory "you will learn/build" address
+    banned in both. The theremin we-only rule deliberately not imported; reasoning
+    recorded in the Diagnostics section.
+  - Not adapted (out of scope by decision): the theremin *(verify)*/*(judgment)* honesty
+    flags, the verify-backlog page, and the design-variable-numbers convention.
+  - `schuyler-docs` vendored at `.claude/skills/schuyler-docs/SKILL.md`, adapted for
+    discursive prose: README section patterns, length tables, and the reference-example
+    corpus dropped; voice principles kept with book-flavored examples; process and chapter
+    structure defer to this document rather than being duplicated.
+- **Pending:** restyle of `wiki/Home.md` and Chapter 1 against the vendored skill (the
+  Style-section TODO). The Home.md restyle must also add the front-matter AI disclosure
+  the vendored skill's honesty principle calls for — no home for it exists yet. Note the
+  restyle is partly *structural*, not just sentence-level:
+  Chapter 1's "Mission briefing" opener is a learning-objective list in promissory "you
+  will" address — banned twice over by the new conventions. Whether "Mission briefing"
+  survives as a chapter convention is Schuyler's call at restyle time.
 
 - **Done:** outline settled through the decisions recorded above; `wiki/Home.md` (front page +
   full TOC); `wiki/Chapter-01-The-Flight-Computer.md` drafted (uncrewed OKTO trainer; gravity
@@ -191,7 +340,9 @@ later, better draft; the book can show the progression where instructive.
   - `reference/wip/test_free_fall.ks` added as a tracked file (was untracked before).
   - Source-material map updated to reflect the new paths and the additional files.
   - This commit will land on `main` via squash merge after Schuyler's review.
-- **Pending review:** Chapter 1 voice — awaiting `schuyler-docs` skill contents before restyle.
+- ~~Pending review: Chapter 1 voice — awaiting `schuyler-docs` skill contents before
+  restyle.~~ *(Resolved 2026-07-05: skill vendored; restyle itself still pending, tracked
+  above.)*
 - **Next up:** Chapters 2 (telemetry library — first real `lib/` code) and 3 (rocket equation,
   derived and measured). Create `lib/` and `missions/` alongside.
 - **Open questions:** none blocking.
