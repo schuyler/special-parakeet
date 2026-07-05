@@ -287,7 +287,11 @@ speculation, not planning.
 
 ## Working agreements (for future sessions)
 
-- Branch: `claude/kerbal-aerospace-tutorial-q6gs9o`. Commit and push at natural checkpoints.
+- Work lands on `main`: sizable work happens on short-lived branches squash-merged in after
+  Schuyler's review; small reviewed-in-conversation changes may commit to `main` directly.
+  Push at natural checkpoints. (The old `claude/kerbal-aerospace-tutorial-q6gs9o` branch is
+  retired — its content was squash-merged into `main` on 2026-07-03; kept frozen, don't
+  build on it.)
 - Workflow per chapter: stub → section-by-section drafting per "Drafting: process and voice"
   above → Schuyler reviews → revise. Don't mass-produce chapters ahead of review; voice
   calibration is still in progress.
