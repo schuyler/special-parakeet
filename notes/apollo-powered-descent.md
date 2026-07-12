@@ -286,6 +286,62 @@ Failure modes worth demonstrating on purpose (book material): PDI ignition 30 s 
 coast-phase abort instrument catches it); TWR 1.3 (t_go solver fails at DOI time, on the
 ground, before anything is committed).
 
+## References
+
+Primary and secondary sources on the Apollo descent, ordered by usefulness to an
+implementer. Between them, Klumpp + Bennett + Eyles can source essentially every Apollo
+claim the chapters will make. Scans: NTRS (ntrs.nasa.gov) for the NASA reports, the
+Virtual AGC document library (ibiblio.org/apollo) for the Draper reports, GSOPs, and
+flight code.
+
+**The guidance law**
+
+- Klumpp, A. R., **"Apollo Lunar-Descent Guidance,"** *Automatica* 10, pp. 133–146
+  (1974). Longer version: MIT Charles Stark Draper Laboratory report **R-695** (1971).
+  The source for everything in phases 3–4 of this guide: the polynomial guidance
+  derivation, the t_go cubic (we bisect instead), P63/P64 targeting, the gate structure,
+  throttle margin. Readable; start here.
+- Cherry, G. W., **"A General, Explicit, Optimizing Guidance Law for Rocket-Propelled
+  Spaceflight,"** AIAA 64-638 (1964). Origin of "E-guidance" — explicit computation from
+  current state rather than tracking a stored trajectory. Klumpp's law descends from it.
+
+**The trajectory design**
+
+- Bennett, F. V., **"Apollo Lunar Descent and Ascent Trajectories,"** NASA TM X-58040
+  (1970), and the Apollo Experience Report **"Mission Planning for Lunar Module Descent
+  and Ascent,"** NASA TN D-6846 (1972). The real profile numbers — DOI, perilune, PDI
+  range, gate states — and the steepness-vs-terrain-vs-δv reasoning. Sanity-check the
+  numbers table above against these.
+
+**The spec and the code**
+
+- MIT Instrumentation Laboratory, **GSOP R-567, Section 5 (Guidance Equations)** — the
+  flight software spec for P63/P64/P66; every equation the AGC flew, in implementable
+  form.
+- **LUMINARY source code**, Virtual AGC project (ibiblio.org/apollo; mirrored on
+  GitHub) — `THE_LUNAR_LANDING.agc`, `BURN_BABY_BURN--MASTER_IGNITION_ROUTINE.agc`. The
+  servicer loop and t_go logic in real code.
+
+**Context (sidebar material)**
+
+- Eyles, D., ***Sunburst and Luminary: An Apollo Memoir*** (2018); also **"Tales from
+  the Lunar Module Guidance Computer,"** AAS 04-064. By the author of the landing
+  phases of the flight software; the 1201/1202 alarms and the Apollo 14 abort-switch
+  patch, from the inside.
+- O'Brien, F., ***The Apollo Guidance Computer: Architecture and Operation*** (Springer
+  Praxis, 2010). P63→P66 mode logic and displays at the systems level.
+- Mindell, D., ***Digital Apollo*** (MIT Press, 2008). The human/automation split; why
+  P66 existed at all.
+
+**Modern follow-ons**
+
+- D'Souza, C., **"An Optimal Guidance Law for Planetary Landing,"** AIAA GNC (1997).
+  Shows the Apollo polynomial law is near-optimal; clean t_go derivation; bridge to the
+  modern literature.
+- Açıkmeşe, B. & Ploen, S., **"Convex Programming Approach to Powered Descent Guidance
+  for Mars Landing,"** *JGCD* (2007). What superseded this family of laws (SpaceX-style
+  divert). Beyond the book's scope; "what came next" sidebar.
+
 ## What this reuses from `reference/`
 
 - `core/kepler.ks` — `time_to_longitude`, `wrap_longitude`, `orbital_speed`, `bisect`/
