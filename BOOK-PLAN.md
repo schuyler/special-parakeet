@@ -303,7 +303,18 @@ speculation, not planning.
 
 ## Status
 
-*Last updated: 2026-07-05*
+*Last updated: 2026-07-12*
+
+- **Done (2026-07-12):** `notes/apollo-powered-descent.md` — implementation guide for the
+  chapters 11–12 targeted powered-descent script, modeled explicitly on the Apollo
+  sequence (DOI → coast → P63 braking → P64 approach → P66 terminal). Key design
+  decisions recorded there: aim-point guidance (Klumpp quadratic law) instead of
+  ballistic-impact prediction, which removes the terrain-height prediction problem the
+  `reference/` attempts fought; terrain height at the *target* is known exactly via
+  `geopositionlatlng`; sequential phase functions replace nested `when` triggers. The
+  guide is working material — it gets rewritten into chapter prose (and `lib/` code)
+  when Part IV drafting reaches it. New `notes/` directory holds authoring working
+  papers that are neither reader-facing (`wiki/`) nor frozen (`reference/`).
 
 - **Done (2026-07-05):** drafting conventions adapted from the theremin tutorial wiki's
   drafting process (its `Agent_Guide` and `Tutorial/Overview` pages):
