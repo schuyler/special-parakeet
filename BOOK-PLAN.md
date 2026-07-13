@@ -303,7 +303,22 @@ speculation, not planning.
 
 ## Status
 
-*Last updated: 2026-07-12*
+*Last updated: 2026-07-13*
+
+- **Done (2026-07-13):** `notes/klumpp-guidance-derivation.md` — companion to the powered-
+  descent guide, derived from a reader Q&A thread. Two things the sibling guide only stated
+  in passing, now worked from scratch: (1) the **jerk dynamics** behind the guidance law —
+  the constant-jerk kinematic ladder (one rung up from the constant-acceleration physics-
+  class formulas), the boundary-value solve that produces `a_cmd = 6R/t² − (4v+2v_tgt)/t`,
+  and the reading of that law as a *PD controller* with derived, escalating gains and a
+  constant implied damping ratio `ζ = 2/√6 ≈ 0.82`; (2) an **alternative `t_go` closure** —
+  the Apollo-style target-acceleration form, which is a closed-form *quadratic*
+  (`a_tgt·T² − (2v+4v_tgt)T + 6R = 0`) versus the current guide's thrust-margin bisection.
+  Includes a drop-in kOS `solve_t_go_accel`, a which-closure-when comparison (thrust-margin
+  for braking, target-accel for approach — the phase split Apollo actually used), and the
+  point that the acceleration target needs **no precomputed trajectory** (synthesised live
+  from local `g`). Flagged for the chapter as the more *teachable* closure. Both notes stay
+  working material until Part IV drafting reaches them.
 
 - **Done (2026-07-12):** `notes/apollo-powered-descent.md` — implementation guide for the
   chapters 11–12 targeted powered-descent script, modeled explicitly on the Apollo
