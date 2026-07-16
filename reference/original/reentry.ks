@@ -13,7 +13,7 @@ set warp to 0.
 sas off.
 set pitch to 20.
 
-lock hdg to srfprograde + r(0, pitch, 0).
+lock hdg to srfprograde + r(pitch, 0, 0).
 lock steering to hdg.
 wait until steering_aligned_to(hdg:vector).
 
@@ -33,14 +33,26 @@ for en in en_list {
 set warp to 2.
 print "Warping to atmospheric re-entry.".
 
-wait until altitude < 70000.
+wait until altitude < 72000.
 panels off.
 
 set warpmode to "physics".
+set warp to 0.
+
+rcs on.
+wait until steering_aligned_to(hdg:vector).
+
 set warp to 2.
 
 print "Waiting for aerodynamic control.".
-until airspeed < 1200 {
+when airspeed < 800 {
+  print "Flight controls unlocked.".
+  set warp to 0.
+  unlock steering.
+  sas on.
+}
+
+until airspeed < 100 {
    if periapsis <= 0 {
      local t_land to landing_time().
      local pos to positionat(ship, time:seconds + t_land).
@@ -52,11 +64,7 @@ until airspeed < 1200 {
    //} else if site:lng < -77 {
    //  set pitch to max(pitch - 1, 0).
    //}
-   wait 5.
+   print "Air pressure: " + round(ship:body:atm:altitudepressure(ship:altitude),4) at (1,19).
 }
 
-print "Flight controls unlocked.".
-set warp to 0.
-unlock steering.
-sas on.
 
