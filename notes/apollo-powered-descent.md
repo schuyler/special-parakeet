@@ -91,15 +91,15 @@ function plan_doi {
 
   // The burn happens half an orbit before periapsis.
   local burn_lng is wrap_longitude(tgt_geo:lng - lead_deg - 180).
-  local t_burn is time_to_longitude(burn_lng).
+  local t_burn is time_to_longitude(burn_lng).   // absolute TimeStamp, not a duration
 
-  local r_burn is (positionat(ship, time + t_burn) - body:position):mag.
+  local r_burn is (positionat(ship, t_burn) - body:position):mag.
   local r_pe is body:radius + h_pdi.
   local sma is (r_burn + r_pe) / 2.
   local v_new is sqrt(body:mu * (2 / r_burn - 1 / sma)).
-  local v_old is velocityat(ship, time + t_burn):orbit:mag.
+  local v_old is velocityat(ship, t_burn):orbit:mag.
 
-  return node(time:seconds + t_burn:seconds, 0, 0, v_new - v_old).
+  return node(t_burn:seconds, 0, 0, v_new - v_old).
 }
 ```
 
@@ -153,8 +153,8 @@ function guidance_step {
   parameter t_go.      // time remaining to reach the aim point
 
   local r_err is aim_geo:altitudeposition(aim_alt).      // ship-relative, body-fixed
-  local v is ship:velocity:surface.
-  local a_cmd is 6 * r_err / t_go^2 - (4 * v + 2 * v_tgt) / t_go.
+  local vel is ship:velocity:surface.    // "v" would shadow the builtin V()
+  local a_cmd is 6 * r_err / t_go^2 - (4 * vel + 2 * v_tgt) / t_go.
 
   local g_vec is body:position:normalized * (body:mu / body:position:mag^2).
   return a_cmd - g_vec.
@@ -220,7 +220,9 @@ simpler and is what P66 actually was:
 
 ```
 local g0 is body:mu / body:radius^2.
-local lock v_ref to -max(2, alt:radar / 10).       // 10% of height, floor at 2 m/s
+local lock v_ref to -min(5, max(2, alt:radar / 10)).   // 10% of height, floor at 2 m/s,
+                                                       // capped at 5 m/s for continuity
+                                                       // with the low gate's arrival rate
 lock throttle to (g0 + 0.3 * (v_ref - verticalspeed)) * ship:mass
                  / max(0.001, ship:availablethrust).
 lock steering to lookdirup(

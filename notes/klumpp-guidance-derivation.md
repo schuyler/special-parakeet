@@ -260,11 +260,11 @@ function solve_t_go_accel {
 
   local u   is up:vector.                          // local vertical, unit
   local rER is aim_geo:altitudeposition(aim_alt).  // r_tgt - r, ship-relative
-  local v   is ship:velocity:surface.
+  local vel is ship:velocity:surface.              // "v" shadows the builtin V()
 
   // project onto the vertical axis -> scalars
   local Rv  is vdot(rER,   u).
-  local vv  is vdot(v,     u).
+  local vv  is vdot(vel,   u).
   local vtv is vdot(v_tgt, u).
 
   local A is a_v_tgt.
@@ -328,8 +328,10 @@ evaluation converts a silent failure into a caught one.
 | Adapts to mass burn-off | yes (re-reads `a_max`) | no (ignores `a_max`) |
 | Determinism / debug | lower (bracket, no-crossing) | high (formula, one root) |
 
-Neither is globally "better"; they servo `t_go` against different scalars and guard
-different failures. On kOS the per-solve cost gap is irrelevant (compute is cheap), so pick
+Neither is globally "better"; they servo `t_go` against different scalars ("servo" as a
+verb is servomechanism jargon — hold a quantity at a setpoint by continuous feedback
+correction — and needs explaining when this reaches chapter prose) and guard different
+failures. On kOS the per-solve cost gap is irrelevant (compute is cheap), so pick
 by *what can kill the phase*:
 
 - **Braking (P63)** is authority-limited — the dominant failure is throttle saturation.
