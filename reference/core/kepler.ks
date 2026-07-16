@@ -1,8 +1,9 @@
 // Functions related to Keplerian orbits
 // https://ksp-kos.github.io/KOS/structures/orbits/orbit.html
 
-cd(scriptPath():parent).
-runoncepath("optimize.ks").
+// Locate optimize.ks relative to this file, without disturbing the caller's
+// current directory.
+runoncepath(scriptPath():parent:combine("optimize.ks")).
 
 // == Helper functions ==
 
@@ -21,8 +22,18 @@ function mean_anomaly {
     parameter orbit_ is ship:orbit.
     // Calculate the mean anomaly M at time t for the given orbit.
     // This could also be calculated using mean motion, which is: sqrt(mu / a^3) * (t - epoch).
-    local ma is orbit_:meanAnomalyAtEpoch + 360 * (t:seconds - orbit_:epoch) / orbit:period.
+    local ma is orbit_:meanAnomalyAtEpoch + 360 * (t:seconds - orbit_:epoch) / orbit_:period.
     return mod(ma, 360).
+}
+
+function time_of_periapsis {
+    parameter t is time.
+    parameter orbit_ is ship:orbit.
+    // The next periapsis passage at or after time t. Periapsis is mean
+    // anomaly 0 (mod 360), so the wait from t is the remaining mean
+    // anomaly swept at the orbit's mean motion.
+    local M is mean_anomaly(t, orbit_).
+    return t + (360 - M) * orbit_:period / 360.
 }
 
 function _mean_to_eccentric_anomaly {
@@ -267,7 +278,12 @@ function body_rotation {
     // "The rotation angle is the number of degrees between the Solar Prime Vector and the current position of the body’s prime meridian
     //   (body longitude of zero). The value is in constant motion, and once per body’s rotation period (“sidereal day”), its :rotationangle
     //   will wrap around through a full 360 degrees."
-    return orbit_:body:rotationangle + (360 / orbit_:body:rotationPeriod) * (t - orbit_:epoch):seconds.
+    //
+    // "Current position": rotationangle is sampled at the moment of the call, so the extrapolation
+    // interval must be measured from now — not from orbit_:epoch, which for a maneuver node's
+    // predicted orbit lies at the node time, not the present. Orbital elements anchor at the
+    // orbit's epoch (see mean_anomaly); the body's rotation does not care about any orbit.
+    return orbit_:body:rotationangle + (360 / orbit_:body:rotationPeriod) * (t - time):seconds.
 }
 
 function body_longitude {
@@ -329,14 +345,16 @@ function time_to_longitude {
         set nu_estimate to nu_estimate + 360.
     }
 
-    // The time estimate is the difference in true anomaly, divided by the mean motion.
+    // Body-frame longitude advances at the SYNODIC rate, not the orbital
+    // rate — the body rotates underneath while we wait. Estimating with the
+    // orbital period under-shoots by the rotation accrued during the wait
+    // (~20 deg per orbit on Minmus), which can push the root outside the
+    // search window entirely. No clamp to the orbital period either: with a
+    // synodic-rate estimate the answer can legitimately exceed it.
     local t_estimate is
-        (nu_estimate - nu_0) * orbit_:period / 360.
+        (nu_estimate - nu_0) * synodic_period(orbit_) / 360.
 
-    // Estimate the time window around the target longitude.
     local t0 is time.
-    local t_start is max(t_estimate - t_window, 0).
-    local t_end is min(t_estimate + t_window, orbit_:period).
 
     // Function to find the difference between the body's longitude at time t and the target longitude.
     // This is the function we want to find the root of.
@@ -348,5 +366,21 @@ function time_to_longitude {
         return diff.
     }.
 
-    return t0 + bisect(longitude_diff, t_start, t_end, epsilon).
+    // The estimate is first-order (near-circular orbits); if the bracket
+    // misses the root, widen it and retry rather than propagating bisect's
+    // -1 failure as a silent time-in-the-past. Cap the widening well short
+    // of the +/-180 wrap discontinuity in longitude_diff, which bisection
+    // would otherwise mistake for a root.
+    local w is t_window.
+    until w > synodic_period(orbit_) / 4 {
+        local t_start is max(t_estimate - w, 0).
+        local t_end is t_estimate + w.
+        if longitude_diff(t_start) * longitude_diff(t_end) <= 0 {
+            return t0 + bisect(longitude_diff, t_start, t_end, epsilon).
+        }
+        set w to w * 2.
+    }
+    print "time_to_longitude: no root near estimate " + round(t_estimate)
+        + " s for longitude " + round(target_longitude, 2) + ".".
+    return t0 - 1.   // sentinel: a time in the past; callers must check
 }
