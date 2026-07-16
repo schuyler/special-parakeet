@@ -2,6 +2,10 @@ clearscreen.
 parameter target_apoapsis is 72000.
 parameter level_off is 40000.
 parameter roll is 270.
+
+set min_pitch to 5.
+set atm_exp to 1/2.
+
 //parameter orbital_speed is 2150.
 print("= LAUNCH = ").
 
@@ -14,7 +18,6 @@ lock air_pressure to body:atm:altitudepressure(ship:altitude).
 lock pitch to 90.
 lock steering to heading(90, pitch, roll).
 lock throttle to 1.
-set min_pitch to 5.
 stage.
 
 set warpmode to "physics".
@@ -22,7 +25,7 @@ set warpmode to "physics".
 
 //local tick to time:seconds.
 when ship:altitude > 1500 then {
-  lock pitch to max(90 * sqrt(air_pressure), min_pitch).
+  lock pitch to max(90 * air_pressure ^ atm_exp, min_pitch).
   when ship:altitude > level_off then {
     lock steering to ship:prograde.
   }
