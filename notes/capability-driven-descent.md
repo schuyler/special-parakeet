@@ -1,223 +1,244 @@
-# Capability-driven descent: working backwards from the suicide burn
+# Capability-driven descent: a bare-bones general edition of Apollo's landing program
 
-*Design note, 2026-07-17. Successor to `targeting-redesign-checkpoint.md` — that note
-inverted the planning dependency chain (BRAKE duration from the horizontal axis at design
-throttle, vertical rides gravity) and fixed the BRAKE-loafs-at-21% half of the high-TWR
-inefficiency. This note goes after the other half: the APPROACH hang and the 150 m
-terminal tail. It reframes the whole profile around the fuel-optimal suicide burn and lets
-the gates fall out of the craft's own thrust, instead of importing Apollo's crewed-mission
-gate states.*
+*Design note, 2026-07-17 (rev. 2). Successor to `targeting-redesign-checkpoint.md`. That
+note inverted the planning chain (BRAKE duration from the horizontal axis at design
+throttle) and fixed the BRAKE-loafs-at-21% half of the high-TWR inefficiency; this note
+replaces the whole trajectory model with one continuous gravity turn and lets the gates —
+and their number — fall out of it. Reframed this session around a design goal: a stripped-
+down, general edition of the Apollo descent, sized for online computing power, ad-hoc
+planning, and a wide range of spacecraft and bodies.*
 
-**Status: soft commitments only.** This is the reasoning and the architecture we agreed;
-the exact trajectory model, the gate placement math, and the code blocks are to be worked
-step-by-step in later sessions. Nothing here is applied to
-`reference/original/powered_landing.ks`, and — unlike the checkpoint — this note does not
-carry finished code blocks. It carries what we've decided and, just as importantly, what we
-have deliberately left open.
+**Status: soft commitments, worked step-by-step.** Nothing applied to
+`reference/original/powered_landing.ks`. Math below is deliberately fed in small named
+steps — the style of the existing `solve_t_go` / descent-design code (name each
+intermediate, one physical idea per line), so a reader two semesters into calculus can
+follow every line. No code blocks yet; those come block-by-block on approval.
 
-## The idea in one paragraph
+## What this is, and what it strips out
 
-The fuel-optimal airless descent is essentially bang-bang: coast as long as possible, then
-one hard braking arc that arrives at the surface at low speed. Apollo declined that
-hoverslam for four reasons — crew visibility, abort coverage, human-in-the-loop, blind
-terrain — and we share none of the first three. The only one that survives is terrain
-uncertainty, and that is exactly the one our *surveyed target* removes, but only over the
-site. So the suicide burn is available to us where it wasn't to Apollo. The move: design the
-brake backwards from a margin-throttle burn that arrives at the surface, let low gate and
-high gate be points on *that* trajectory rather than scaled-Apollo states, and clamp only
-one thing by hand — how close to the terrain the approach corridor is allowed to run.
+Apollo's descent was shaped by three things we don't have to live with:
+
+- **The AGC couldn't integrate the trajectory in flight**, so the reference path (position,
+  velocity, *and acceleration* at each gate) was computed on the ground and flown as a
+  stored table. We have compute to spare — we integrate the path live at ignition. **That
+  deletes the trajectory tables.**
+- **Missions were planned for months.** We plan ad hoc: point at a surveyed target from
+  whatever orbit we're in, and solve the descent from live state. **That deletes the
+  ground-planning loop** — everything is computed at PDI from `v_pe`, mass, thrust, and body
+  constants.
+- **There was a crew.** No crew means no pitchover-for-visibility, no manual short-final, no
+  moded aborts around those. **That deletes the reasons Apollo's gates sat where they sat.**
+
+What's left is small: one guidance law (Klumpp's quadratic, already flown), one ideal path
+(a gravity turn), and a rule for chopping that path into as many legs as the law needs — one
+on a gentle body, more on a harsh one. The generality is the point: the same code should
+land a TWR-2 tug on Minmus and a TWR-30 probe on the Mun, because nothing in it is tuned to
+a body or a vehicle. It reads `a_max`, `μ`, `r`, `g`, the target, and goes.
 
 ## Diagnosis: high TWR isn't the problem, the fixed gates are
 
-High TWR is not inefficient here. Gravity loss is `∫ (g opposing thrust) dt`; the later,
-harder, and shorter the brake, the smaller that integral, so efficiency *should improve*
-with TWR. The current design inverts that because its gates are fixed and refuse the thrust.
+Gravity loss is `∫ (g opposing thrust) dt` — later, harder, shorter braking makes it
+smaller, so efficiency *should* rise with TWR. The current design inverts that because its
+gates are fixed and refuse the thrust. Flight 7 (TWR-34, 0 m miss): 244.1 m/s, of which
+**BRAKE 100.2, APPROACH 107.6**. Flight 6 read the mechanism: BRAKE at **21% throttle**
+throughout, and ~45 of APPROACH's 109 m/s was **pure gravity hang** (3.1 km at ~35 m/s).
+The fuel-optimal brake for that craft is ~10–15 s; the flown design spent ~135 s of engine-
+against-gravity. That surplus is the ~50 m/s gap between the flown 244 and the impulsive
+floor.
 
-The telemetry is unambiguous. Flight 7 (TWR-34 craft, 25 km circular, h_pdi 3000, 0 m miss)
-spent 244.1 m/s: DOI+coast 11.9, **BRAKE 100.2, APPROACH 107.6**, TERMINAL 24.4. Flight 6
-read the mechanism directly: BRAKE flew at **21% throttle** the whole way (its duration
-pinned by the vertical geometry of a fixed 2 km high gate, not by the engine), and ~45 of
-APPROACH's 109 m/s was **pure gravity hang** — 3.1 km covered at ~35 m/s while the engine
-held against gravity. For that craft the fuel-optimal brake is ~10 s and drops a handful of
-metres; the flown design spent ~135 s of engine-against-gravity doing a ~10–20 s job. The
-~50–60 m/s gap between the flown 244 and the impulsive floor *is* that surplus engine time.
+## The ideal: one continuous gravity turn
 
-The checkpoint's horizontal-first redesign already recovers the BRAKE half (predicted ~10 s
-at design throttle for this craft). What it explicitly defers — "hg_height 2000 is where the
-remaining ~45 m/s of hang lives" — is the APPROACH tail. That tail is this note's target.
+The fuel-optimal airless descent is a gravity turn flown in reverse — hold thrust exactly
+**surface-retrograde** and let gravity rotate the velocity vector from horizontal to
+straight-down as the burn bleeds off speed, arriving vertical over the target. Retrograde is
+the rule for three separable reasons:
 
-## Working backwards: the construction
+1. It's the minimum-ΔV direction to null a velocity vector — no thrust wasted turning it.
+2. It cancels the vertical velocity **concurrently** with the horizontal, while the craft is
+   still fast and centrifugal support makes vertical cheap — instead of deferring it to the
+   slow terminal hover, where it's expensive. (This is why the checkpoint's brake-horizontal-
+   then-clean-up-vertical is the *expensive* side of retrograde, and part of why APPROACH
+   hangs.)
+3. It minimizes time spent slow. Gravity loss accrues where `g − v²/r` is large, i.e. at low
+   speed; retrograde is only slow briefly, at the very end.
 
-From the ground up, the way the profile is actually designed:
+Apollo declined this hoverslam for crew visibility, abort coverage, and blind terrain. We
+share none of the first two, and the third — terrain uncertainty — is exactly what a
+surveyed target removes over the site. The gravity turn's geometry even hands us the safety
+for free: with `v_pe > v_circular` the arc *rises* just after PDI and is **highest up-range**
+(where terrain is only modeled) and **lowest over the target** (where radar is truth).
 
-1. **Touchdown / terminal (keep).** The P66 rate-of-descent controller costs a few m/s and
-   is the robust part. The suicide burn does not target the ground; it targets **low gate**,
-   the terminal handoff. Keep the controller.
+**One correction to rev. 1:** the earlier note claimed a hard TWR regime split (a 114 m/s
+arrival for the low-TWR craft). That number was an artifact of the *horizontal* model, which
+lets the vertical free-fall. The gravity turn cancels vertical as it goes, so it closes
+softly across essentially the whole TWR range. There is no regime wall — only a continuous
+efficiency knob, and it is clearance, not TWR (see below).
 
-2. **Low gate = the terminal handoff — now parameterized and lowered.** 150 m is Apollo's
-   500 ft carried over unscaled, and its stated justification ("close enough that `alt:radar`
-   is ground truth") does not hold as a *floor*: over the surveyed site radar is truth at any
-   height. The real floor is the terminal phase's need for room to do its two jobs — flare
-   the descent rate to a soft touchdown, and null any residual horizontal drift the guided
-   leg hands it — plus a buffer to be clear of the law's divergent gains near `t_go → 0`.
-   Both scale with how fast and how clean the handoff is. See "Low gate" below; the decision
-   is to make it a parameter, default it well under 150, and walk it down with telemetry.
+## The model, in small steps
 
-3. **The brake, integrated backwards from low gate.** At margin throttle `f·a_max`, run the
-   checkpoint's own vertical model — `a_felt = g − v²/r`, "gravity first pays the centripetal
-   cost of following the surface's curve; only the remainder descends the ship" — but to a
-   *different endpoint*: horizontal speed `v_pe → ~0` at low gate, not `→ 60` at a high gate.
-   The integral then yields the brake duration, the altitude it consumes, the downrange it
-   covers (→ the lead angle), and the vertical rate it arrives with.
+Everything is one short integration, run once at PDI. Carry four numbers and step them
+forward by a small `dt`. This replaces both Apollo's stored trajectory and the checkpoint's
+closed-form drop integral — we just let the computer walk the path.
 
-4. **High gate = the top of that brake, clamped by clearance.** Its velocity and height
-   become *outputs* of the backward integration, not the scaled-Apollo `60 m/s @ 2 km`. The
-   one input we keep by hand is the terrain-clearance floor `H_clear`: high gate's altitude —
-   and, more precisely, the whole arc's minimum altitude — must stay `≥ terrain + H_clear`.
+**The four rates.** Let `γ` be the flight-path angle below horizontal (`γ = 0` level,
+`γ = 90°` straight down), `v` the surface speed, `a_T = f·a_max` the retrograde thrust.
+Each rate is one idea:
 
-5. **The geometric gift.** Off a low periapsis, `v_pe > v_circular`, so `a_felt < 0` early:
-   the craft is *lifted*, not falling, and the free trajectory rises just after PDI before it
-   falls as the brake bleeds speed below circular. So the trajectory is **highest up-range,
-   lowest late — directly over the target.** The clearance floor therefore protects the
-   *up-range corridor*, where terrain is only modeled and the craft is naturally high; the
-   low, terrain-trusting part is confined to over the surveyed site, where radar is truth.
-   This is the suicide-burn version of the robustness Apollo bought with its steep final
-   approach, and it falls out of the geometry instead of being scripted.
+```
+a_felt = g − v^2 / r          // the felt vertical accel: gravity minus the centrifugal
+                              // support the ground-track speed already provides
+v_dot     = −a_T + g·sin γ    // speed: thrust brakes it; gravity feeds a little back as
+                              // the path tilts downhill
+gamma_dot = a_felt·cos γ / v  // heading: ONLY gravity-minus-centrifugal turns the vector.
+                              // Retrograde thrust is anti-parallel to v, so it cannot turn
+                              // it — that is what keeps this line clean.
+h_dot     = −v·sin γ          // altitude: falls at the downward part of the speed
+x_dot     =  v·cos γ          // downrange: advances at the forward part of the speed
+```
 
-## The open question at the center: what does the brake actually fly to?
+`gamma_dot` is the whole story of the arc: while `v > v_circular`, `a_felt < 0` and the
+vector turns *up* (the craft rises); once braking drops `v` below circular, `a_felt > 0` and
+it pitches toward vertical. Same `a_felt` the reader already met, now steering the heading.
 
-This is the crux, and the main thing to work step-by-step — recorded here so we don't lose
-what the checkpoint's integral already tells us.
+**Walk it forward (Euler's method — the kinematic ladder, one rung at a time).** Seed at
+PDI, step until the speed is nearly gone:
 
-Run the checkpoint's forward model to the `v_pe → 0` endpoint and the arrival descent rate
-at low gate is `vv_lg = T·[g − v_pe²/(3r)]` with `T = v_pe/a_h`. Evaluate it on the two
-reference craft (Minmus, v_pe ≈ 170 m/s):
+```
+set v to v_pe.  set gamma to 0.  set h to h_pdi.  set x to 0.  set t to 0.
+until v <= v_low {
+  set a_felt to g - v^2 / r.
+  set v     to v     - (a_T - g*sin(gamma)) * dt.
+  set gamma to gamma + a_felt*cos(gamma)/v * dt.   // watch deg/rad: kOS trig is degrees
+  set h     to h     - v*sin(gamma) * dt.
+  set x     to x     + v*cos(gamma) * dt.
+  set t     to t     + dt.
+}
+```
 
-- **TWR-34 test craft** (`a_h ≈ 11.2`): `T ≈ 15 s`, `vv_lg ≈ 5 m/s`. Braking horizontally
-  all the way to zero hands terminal a ~5 m/s descent — a *soft handoff with no APPROACH leg
-  at all.* The single brake IS the whole powered descent; the phase eating 107 m/s today
-  simply disappears.
-- **TWR-2 design craft** (`a_h ≈ 0.51`): `T ≈ 333 s`, `vv_lg ≈ 114 m/s`. Braking horizontally
-  to zero accumulates a descent rate no terminal controller can absorb. The model is telling
-  us the truth: for a long brake, "hold vertical, brake horizontal to zero" is *not* the
-  efficient path — thrust spent building descent rate must be spent again removing it. The
-  efficient brake there is genuinely retrograde (thrust cancels the *velocity vector*, which
-  rotates from near-horizontal toward down as speed bleeds off), and a managed vertical leg
-  earns its keep.
+Out of one loop: the **drop** (`h_pdi − h` at the end), the **downrange** `x` (→ the lead
+angle), the **duration** `t`, and — because we record `(v, gamma, h, x)` as we go — the ship's
+state at *every* point on the arc, which is all we need to place gates.
 
-So the architecture is **TWR-adaptive, and the same guidance law with derived gate states
-spans both ends**: high TWR collapses toward a single brake straight to a low, slow gate;
-low TWR keeps high gate higher/earlier with a managed descent below it. Both the clearance
-floor and the accumulated descent rate push high gate *up* for low-TWR craft — consistently.
-We don't choose which regime we're in; we let the brake integral report `vv_lg` and place
-high gate accordingly.
+**Place PDI.** The drop is what the arc needs; the floor is what the mission accepts:
 
-The reassurance under all of this: **the guidance law flies the real trajectory; planning's
-only jobs are to place PDI/lead and hand the law consistent gate states.** The planning model
-does not have to be the exact fuel-optimal arc — it has to put high gate on *a* feasible
-efficient brake and keep the boundary conditions consistent (lead, speed, duration
-describing the same burn — the hard-won lead-consistency principle). The law absorbs the
-rest, as it has since flight 1. So the step-by-step work is: decide how planning places high
-gate on the brake (candidate: extend the checkpoint decomposition, switch to a
-retrograde/velocity-vector model when `vv_lg` exceeds a soft-handoff threshold), and verify
-by flight — never by argument.
+```
+set drop     to h_pdi_start - h_end.                 // from the integration
+set h_needed to tgt:terrainheight + h_lg + drop.     // start high enough to reach low gate
+set h_floor  to tgt:terrainheight + clearance.       // never fly the corridor below this
+set h_pdi    to max(h_needed, h_floor).
+```
 
-## Terrain clearance: the efficiency knob, made to show its price
+Two cases fall straight out, and they are the efficiency knob:
 
-`H_clear` is the one hand-set input, and it is the efficiency-vs-safety trade in a single
-number. Loose `H_clear` → a low, late hoverslam: minimal ΔV, terrain-trusting. Tight
-`H_clear` → the brake must fly higher and earlier, costing ΔV. Two commitments:
+- **Clearance loose** (`h_needed ≥ h_floor`): fly full margin throttle, brake low and late —
+  the ideal suicide burn.
+- **Clearance binds** (`h_floor` wins): now `h_pdi` is pinned, and **throttle becomes the
+  free variable.** Lower `a_T` lengthens the brake and deepens the drop, so bisect `a_T` (the
+  codebase already has `find_zero_crossing`) until `drop(a_T) = clearance − h_lg`. You throttle
+  *down* to spend exactly the altitude the floor mandates.
 
-- The clamp is on the **whole arc's minimum altitude**, not just high gate — for a hard
-  brake the low point is late (near low gate, over surveyed ground), and the existing sag
-  machinery already computes where. Raise `h_pdi` until the sagging arc clears `H_clear`.
-- The planning block should **print the ΔV that the chosen clearance costs** against the
-  unclamped optimum. That turns `clearance = 2000` from a magic number into a measured
-  decision and fits the book's ledger habit — "measure, don't assume," applied to our own
-  safety margin.
+This re-reads flight 6's 21% throttle: a high-TWR craft under a 2 km floor *should* throttle
+down — its natural drop is metres, so clearance always binds and it must spend altitude. The
+21% was roughly right; what was wrong was the *path* (flat-then-hover instead of one arc). So
+the fix may barely move the throttle — it changes the shape and kills the hang. And the
+bisection has a floor of its own: below some `a_T` the arc can't close (it would arrive still
+fast, or need to hover off-retrograde). Hitting it is a clean pre-flight signal — *"clearance
+too high for this craft, lower it or add thrust"* — caught on the ground.
+
+## Selecting the gates: tessellate the arc
+
+The gates are not places where anything physical happens — on a continuous arc, nothing does.
+They are the resolution at which we resample the ideal path so the guidance law can track it.
+The law flies a **chord**: a constant-jerk profile matching the two endpoint states but
+cutting across whatever the true arc does between them. So a gate is where one chord ends and
+the next begins, and we place them by bounding how far the chord may stray from the arc —
+exactly like breaking a smooth curve into straight segments with a bounded gap.
+
+Two small per-leg budgets, checked as we walk the arc; end the leg when **either** trips:
+
+```
+// (a) along-track sag: the chord's gap from the arc over a leg that sheds dv of speed.
+set dv  to v_gate - v.                 // speed shed since the last gate
+set sag to dv^2 / (4 * r).             // the note's own residual bound, reused
+if sag > sag_budget { drop a gate. }   // authority spent on chord-vs-arc mismatch
+
+// (b) heading change: how far the vector turned since the last gate.
+set dgamma to gamma - gamma_gate.      // degrees turned
+if dgamma > turn_budget { drop a gate. }  // caps thrust mispointing across the chord
+```
+
+Where each budget bites tells the whole story:
+
+- **Sag `dv²/(4r)`** grows with speed shed and shrinks with body size. On Minmus (`r ≈ 60 km`,
+  `v_pe ≈ 170`) the sag for the *entire* brake is only ~0.1 m/s² — so the law could fly the
+  whole brake as **one chord** and the sag budget never trips. On the Mun (smaller `r`,
+  faster `v_pe`) it tightens and forces a mid-brake gate or two.
+- **Heading `dgamma`** trips at the **pitchover** — the last stretch before the target, where
+  `gamma_dot` blows up (`v` in its denominator → 0) and the vector whips from shallow to
+  vertical. That is where the honest analog of Apollo's "high gate" lands: they pitched over
+  there for the commander's eyes; we cut a leg there because the Cartesian law needs
+  re-anchoring. Same point on the arc, chosen by geometry either way.
+
+So on a gentle body you get **one interior gate**, at the pitchover; on a harsh one, a couple
+more up high. **Low gate** is separate — not a tessellation gate but the terminal handoff,
+forced by the law's own divergence as `t_go → 0`, fixed at `terrain + h_lg`. The count is an
+*output* of the body and craft, which is the generality we want; "high gate + low gate,
+always two" is an Apollo inheritance the budget rule replaces.
+
+**Where this points (named, not committed).** Push the tessellation finer and the gates
+dissolve: carry the arc and feed the law a moving target a fixed lead-time ahead — trajectory
+tracking, no discrete gates. The two-or-three-gate scheme is its coarsest useful form. First
+build the coarse one (integrate at PDI, tessellate to the two budgets); the continuous form is
+the destination if the coarse one leaves ΔV on the table.
 
 ## Low gate: parameterize and walk it down
 
-The decision from this session, concretely:
-
-- **Make low-gate height a parameter**, sibling to `H_clear`. Default it well under 150 —
-  ~50 m is defensible as a start — with ~20–30 m as the aggressive floor.
-- **The floor is set by the terminal phase, not by radar truth.** Terminal needs room to
-  taper toward its 2 m/s touchdown floor (`radar/10`, so ~20–30 m), to null residual drift
-  (its steering tips only ~6°/m/s, so drift wants altitude to walk out), and to stay clear of
-  the guided law's divergent gains near `t_go → 0` (at 50 m and ~5 m/s that's ~10 s in hand;
-  at 20 m, ~4 s — tight).
-- **The payoff is the same "don't hang" logic.** Terminal is a near-hover — throttle sits at
-  the gravity feedforward the whole way down, so every metre is gravity loss, and it scales
-  with body g (the same 150 m costs ~3× as much on the Mun as on Minmus). Flight 7's TERMINAL
-  was 24.4 of 244. Every metre lowered is a metre the *efficient brake* carries instead.
-- **It couples to the arrival rate** — a lower gate wants a slightly slower, cleaner arrival
-  so the flare and drift-null fit the reduced room. Lower the gate and let the arrival rate
-  come down with it; don't move it in isolation.
-- **Walk it down with telemetry, don't pick it by argument.** Flight 7 now logs terminal
-  rows, so touchdown `v_vert` and miss distance are the scores. Drop the gate a step per
-  flight; stop when either degrades. That yields a real number instead of Apollo's inherited
-  one.
-
-## One leg or two
-
-A pure suicide burn is one continuous brake. But the quadratic law assumes acceleration
-linear-in-time over the leg, and a full brake from orbital speed is long enough that the
-approximation degrades and the aim-point geometry wants re-targeting partway — the real
-reason Apollo split P63/P64, and why flight 1's single gentle leg worked but reversed.
-
-**Recommendation: keep two guided legs, but place high gate as a point *on the optimal
-brake*, not as a chosen state.** Design the efficient brake backwards from low gate, then
-split it where the clearance floor binds (or at a fixed fraction of `v_pe`). Both legs fly
-pieces of the *same* efficient decel; neither hangs; high gate's velocity is whatever the
-brake has there. For a high-TWR craft the split may collapse to nearly nothing (the second
-leg is a few seconds) — which is correct, and is where the APPROACH fuel goes to die.
+150 m is Apollo's 500 ft, unscaled, and "radar is truth" holds at any height over a surveyed
+site — so it's no floor. The real floor is terminal's room to flare the descent to a soft
+touchdown, null any residual drift, and stay clear of the law's divergent gains near
+`t_go → 0`. All three scale with how fast and clean the handoff is. Terminal is a near-hover
+(throttle at the gravity feedforward), so every metre is gravity loss, worse on higher-g
+bodies — flight 7's TERMINAL was 24.4 of 244. Decision: **make it a parameter**, default well
+under 150 (~50 m, ~20–30 m floor), let it couple to a slightly slower arrival, and **walk it
+down with telemetry** (touchdown `v_vert` and miss distance are the scores) rather than
+picking a number by argument.
 
 ## Margin
 
-"Planned margin" is `f < 1`, and it does double duty. Reserving `(1 − f)` of thrust is both
-the control authority the law spends absorbing error *and* the ignition-timing cushion — if
-the brake lights late or the thrust runs short, the law calls on the reserve to catch up. So
-do **not** design a literal `f = 1` hoverslam; the campaign's whole thesis is that the law's
-error-absorption is the robustness, and `f = 1` leaves it nothing to absorb with. Start at
-`f ≈ 0.85`; it's a knob we sweep in flight if the law shows it has room. The saturation guard
-and attitude gate stay exactly as they are.
+`f < 1` does double duty: the reserved `(1 − f)` is both the authority the closed-loop law
+spends absorbing error and the ignition-timing cushion. Don't design a literal `f = 1`
+hoverslam — the law's error-absorption *is* the robustness. Start `f ≈ 0.85`; sweep it if the
+law shows room. Saturation guard and attitude gate stay.
 
-## What changes vs the checkpoint (soft)
+## What this strips out
 
-Held together so the delta is legible; all soft, all subject to the step-by-step work.
-
-- **Kept from the checkpoint:** `h_pdi` as an output (`terrain + clearance`, floored);
-  BRAKE pinned to design throttle, not geometry; exact endpoint feasibility checks; the
-  `a_felt = g − v²/r` vertical model; the lead-consistency principle; DOI/coast/eccentricity
-  feedback/kepler fix all untouched.
-- **New here:** the brake's endpoint is low gate (`v → ~0`), not a 60 m/s high gate; high
-  gate becomes a waypoint on that brake (velocity and height derived), clamped only by
-  `H_clear` on the arc minimum; APPROACH as a distinct hang-phase collapses (fully for high
-  TWR, partially for low); low-gate height becomes a parameter defaulted well under 150; the
-  clearance ΔV cost is reported.
-- **Open (the step-by-step work):** how planning places high gate on the brake (extend the
-  decomposition vs. switch to a retrograde/velocity-vector model past a `vv_lg` threshold);
-  where exactly the two-leg split falls; the low-gate/arrival-rate coupling law; the
-  `vv_lg` soft-handoff threshold itself.
+- **vs Apollo:** the ground-computed trajectory table (we integrate live); the fixed
+  two-gate/visibility structure (tessellation picks the count); the crewed pitchover and
+  manual short-final (guidance flies it).
+- **vs the checkpoint:** the closed-form horizontal/vertical drop integrals (one Euler loop
+  replaces both); the fixed `60 m/s @ 2 km` high gate and the separate APPROACH leg (gates
+  are read off the arc, and the hang goes with them); the `114 m/s` regime framing (an
+  artifact — dropped).
+- **Kept:** the Klumpp quadratic guidance law and `solve_t_go` unchanged; `a_felt = g − v²/r`;
+  lead-consistency; DOI/coast/eccentricity-feedback/kepler fix untouched; the terminal
+  rate controller.
 
 ## Decisions / forks, with recommendations
 
-- One leg or two? → **Two, high gate as a point on the optimal brake.** Robust; small delta.
-- Design margin `f`? → **0.85** to start; sweep if the law has room.
-- Low gate fixed or output? → **Parameter**, defaulted ~50 m, walked down with telemetry.
-- Keep the P66 rate controller? → **Keep it.** The robust part; costs a few m/s.
+- Sample the arc how? → **Tessellate to a sag + turn budget**; ≥1 gate, count is an output.
+  Interior gate lands at the pitchover.
+- Precompute the arc or track it continuously? → **Precompute at PDI** first (simple);
+  continuous tracking is the named destination.
+- Design margin `f`? → **0.85**, swept in flight.
+- Low-gate height? → **Parameter**, ~50 m default, walked down with telemetry.
+- Terminal controller? → **Keep it.**
 
-## Process (unchanged, hard-won)
+## Process and predicted signatures
 
-No claim about flight behavior without telemetry; predictions only as testable signatures.
-One instrumented change per flight (this whole reframe is one planning-subsystem change).
-Blocks presented and applied only on explicit approval, block-by-block. Comments carry
-timeless principles, not war stories.
-
-**Predicted signatures for the first flight of this design** (TWR-34 test craft, stated as
-columns to check, not promised outcomes): BRAKE carries to low gate at ~5 m/s descent with
-horizontal `v_to_site → ~0`; the APPROACH ledger collapses from flight 7's 107.6 m/s toward
-a few-second remnant or nothing; TERMINAL shrinks with the lowered gate; total ΔV moves off
-244 toward the ~180–200 impulsive floor; the arc's logged minimum altitude up-range stays
-`≥ terrain + H_clear`; touchdown `v_vert` and miss distance hold at flight-7 quality.
+One instrumented change per flight (this whole reframe is one planning-subsystem change);
+predictions stated only as testable signatures; blocks applied on explicit approval,
+block-by-block. First flight of this design, TWR-34 test craft, columns to check (not
+promised outcomes): BRAKE carries to low gate as one arc with `v_to_site → 0`, no reversal;
+the APPROACH ledger collapses from 107.6 toward a short pitchover remnant; total ΔV moves off
+244 toward the ~180–200 floor; the logged arc-minimum altitude up-range stays
+`≥ terrain + clearance`; touchdown `v_vert` and miss distance hold at flight-7 quality.
