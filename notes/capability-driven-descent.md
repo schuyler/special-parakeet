@@ -29,19 +29,85 @@ overpowered craft, so both ends of the range matter when reading a result.
 The guidance law is not the problem and never has been. Every failure has been in what it was
 asked to do.
 
-## The shape: two programs, one seam
+## The shape: two jobs, one seam
 
-**A planner** runs before DOI, from the parking orbit. It surveys the terrain up-range of the
-site, computes the shallowest approach that clears it, solves the PDI altitude that implies,
-and **adds a maneuver node**. That is its whole output.
+**Planning** runs before DOI, from the parking orbit. It works out the shallowest approach that
+clears the terrain, solves the PDI altitude that implies, and **adds a maneuver node**. That is
+its whole output.
 
-**A flight controller** starts **any time after the DOI burn is executed**. It reads the descent
-ellipse it is on, coasts to periapsis, integrates the gravity turn from live state, tessellates
-it into gates, flies them, hands off to terminal.
+**Flight control** starts **any time after the DOI burn is executed**. It reads the descent
+ellipse it is on, coasts to periapsis, integrates the gravity turn from live state, chops it
+into legs, flies them, hands off to terminal.
 
 The seam is the node, and after the burn, the orbit itself.
 
----
+## Order of work: three scripts, in this order
+
+### 1. The flight controller — `powered_landing.ks`
+
+| | |
+|---|---|
+| **Given** | `target_lat`, `target_lng` |
+| **Arc contract** | `f`, `landing_height`, `speed_handoff`, `turn_budget`, `dt_arc`, `max_steps` |
+| **Reads** | its own orbit — periapsis *is* PDI, and `h_pdi` is an observation |
+| **Precondition** | the DOI burn is already executed; the ship is on a descent ellipse |
+| **Produces** | a landed craft; `flight_log.csv`; miss distance |
+
+It is mostly written. The coast, the guidance law, `solve_t_go`, the leg flyer with its
+saturation and attitude guards, terminal descent and the recorder have all flown, and
+`integrate_arc` is committed. The work is mostly subtraction — the closed-form planner, the
+fixed gates and their constants, and Phase 1's DOI machinery all leave — plus one new function
+to chop the arc on pitch, and reading `ship:orbit:periapsis` instead of a parameter. ~800 lines
+to ~450, of which one function is unproven.
+
+It depends on neither planner: a node placed by hand will do. So it is testable through the
+bridge immediately, from a quicksave mid-coast, which is where the unproven function should be
+hammered.
+
+### 2. The simple planner
+
+| | |
+|---|---|
+| **Given** | `target_lat`, `target_lng`, **`γ`** — the human's judgment |
+| **Arc contract** | `f`, `landing_height`, `speed_handoff`, `dt_arc`, `max_steps` |
+| **Reads** | the parking orbit |
+| **Produces** | **a maneuver node**; the solved `h_pdi`, `X` and lead, logged |
+
+No terrain analysis: the human owns the survey and the risk. Worth building for itself, not as
+scaffolding — it makes γ a knob that can be *felt*. Nobody has measured Δv against γ, and the
+claim that the corridor is this design's efficiency knob is still an assertion. It also flies
+real landings that don't have to be optimal, and it prices open item 1: once a degree of γ costs
+something, so does the `clearance` demanded under the coast.
+
+### 3. The smart planner
+
+| | |
+|---|---|
+| **Given** | `target_lat`, `target_lng`, `max_terrain_height`, `clearance` |
+| **Arc contract** | `f`, `landing_height`, `speed_handoff`, `dt_arc`, `max_steps` |
+| **Reads** | the parking orbit, and the terrain under the real ground track |
+| **Produces** | **a maneuver node** — plus **`γ`**, and the point up-range that forced it |
+
+**γ is an input to piece 2 and an output of piece 3. Everything else is identical**, which is
+why 3 extends 2 rather than replacing it: piece 2 already does γ → `h_pdi` → lead → node, and
+piece 3 puts a γ solver in front of the same machinery. The flight controller's contract never
+changes, so it is flown and trusted before either planner exists.
+
+### The seam is the node *and* the arc contract
+
+The arc parameters appear in all three, and they are not incidental — they must agree. The
+planner places PDI a lead angle up-range, and that lead is `X / body:radius` where `X` is the
+arc's down-range. If the planner computes `X` for one `f` and the flight controller flies
+another, PDI is in the wrong place and the descent misses by the difference. The node alone does
+not carry this; it is a shared contract riding beside it.
+
+Which raises a question the design has not answered: `X` is a *consequence* of the state at PDI
+and the thrust, not something the ship chooses. Any DOI error moves PDI, and then the arc
+integrated from the real state ends somewhere other than the site. Either the planner's `X` must
+be exact — it will not be — or the flight controller solves `f` at PDI so that the arc lands on
+the site, making `f` an output of the flight controller rather than a parameter of it. That
+collides with `f`'s other job as the authority reserve, which wants it pinned near 0.85. See
+open item 3.
 
 ## Choices: architecture
 
@@ -89,11 +155,31 @@ applied after.)
 
 ## Choices: the planner
 
-**Certify a chord, not the path.** `dh/dx = tan(pitch)`, and the gravity turn leaves PDI at
+**Two regions, two rules.** The flown path either side of PDI is two different curves, and
+each needs its own argument. PDI is the seam.
+
+**The arc is certified by a chord.** `dh/dx = tan(pitch)`, and the gravity turn leaves PDI at
 `pitch = 0` and steepens monotonically, so `h(x)` is concave and **lies above the chord joining
 its endpoints**. Certifying the straight ray from the site to PDI certifies the flown arc —
-geometrically, not statistically. This is what lets the planner stop comparing trajectories to
-terrain.
+geometrically, not statistically, and with no sampling of the trajectory at all.
+
+**The coast is certified by walking it.** Up-range of PDI the ray says nothing useful: PDI is
+periapsis, so the coast leaves it flat (`dh/dx = 0`) and climbs quadratically while the ray
+climbs linearly. The ray sits above the coast for `2·r_pe·(1+e)/e · tan γ` — on Minmus, over a
+hundred kilometres, most of the up-range hemisphere. It would certify a mountain the coast would
+fly into.
+
+So the coast gets a **flat clearance rule**: sample it, and require `h − terrain ≥ clearance`
+throughout. Flat is correct here for the same reason it was wrong over the arc — the coast is
+not trying to land, so clearance under it is a pure hazard question with no feedback and no
+circularity. The walk runs between PDI and the point where the coast climbs past
+`max_terrain_height`, which on the flight-7 geometry is ~50 km, about a quarter of the coast;
+beyond it nothing on the body can reach the ship. The scan's direction is an implementation
+choice, not a design one — anchoring at PDI and stepping outward lets the loop find its own end
+rather than being told where to start.
+
+The coast is on rails, so this is deterministic *before the burn*: the planner walks `nd:orbit`,
+the patch KSP predicts, and adjusts the node before anything is committed.
 
 **The corridor is a descent angle γ**, because γ is a number about *approaches* and means the
 same thing at Minmus, the Mun, or Tylo, where a PDI altitude is a number about one body.
@@ -105,8 +191,16 @@ same thing at Minmus, the Mun, or Tylo, where a PDI altitude is a number about o
 ```
 
 Walk the ground track back from the site, sample `terrainheight`, keep the running max. This is
-the obstacle clearance surface from instrument approach design. It needs no arc, no orbit, and
-no node, and it ends itself once the ray climbs past `max_terrain_height`.
+the obstacle clearance surface from instrument approach design, and it ends itself once the ray
+climbs past `max_terrain_height`.
+
+**The sweep follows the real ground track**, not an assumed equator, because the track is what
+the ship actually flies over and an inclined approach crosses different country. That couples γ
+to the node: the ground track depends on the orbital plane and on *when* the ship passes, so it
+depends on the node's timing, which depends on `h_pdi`, which depends on γ. The sweep therefore
+joins the same fixed point as everything else rather than standing outside it. It also means the
+body's rotation must be carried explicitly — `geoposition_at`, not the bare ellipse — since the
+ground runs east underneath an inertial track.
 
 **`max_terrain_height` is a planner parameter** because kOS reports `TERRAINHEIGHT` per
 `GeoCoordinates` but has no body-global maximum, and hard-coding one per body in the *flight*
@@ -132,21 +226,40 @@ The lead comes from the arc's own down-range, so it is consistent by constructio
 **A gate is a sample off the arc.** Nothing physical happens at a gate; it is the resolution at
 which the ideal path is resampled so the law can track it. `h` gives the aim altitude, `x` the
 aim offset, and `speed` with `pitch` give the arrival velocity as `speed·cos(pitch)` and
-`speed·sin(pitch)`. The count is an **output**, one gate on a gentle body and more on a harsh
-one, because the law flies a chord between endpoints and the only question is how far that
-chord may stray from the arc.
+`speed·sin(pitch)`.
 
-**Two per-leg budgets, whichever trips first:** `a_error`, the measured gap between the law's
-command and what the arc needs; and `turn`, the pitch swept since the last gate, which caps
-thrust mispointing across the chord. The heading budget trips at the **pitchover**, which is
-where Apollo put its high gate for the commander's eyes — same point on the arc, chosen by
-geometry instead.
+**Chop the arc on pitch, every `turn_budget` degrees.** Not on down-range: the arc ends
+vertical, so `x` stops advancing while the ship is still descending and the last chord would
+never close. Not on time either: the arc's *duration* scales with 1/thrust — ~12 s on a TWR-34
+craft, ~200 s on the TWR-2 design craft, a 17× spread — while both sweep the same 90°. A fixed
+`dt` would buy two chords of 45° on one craft and forty of 2° on the other, and a 45° chord is
+not an approximation of that arc, it is a different trajectory. Pitch is the variable a chord's
+fidelity actually depends on, so step on pitch and the spread disappears.
+
+**`turn_budget` is 15°, so every descent has six chords** — every body, every craft, because
+every gravity turn sweeps the same 90° from level at PDI to vertical at the end. The count is a
+constant we chose, not an output of the vehicle.
+
+**Where 15° comes from, and why there is only one budget.** The arc's virtue is thrust exactly
+retrograde. Across a leg the required acceleration holds magnitude `a_T` while its direction
+rotates by `turn_budget`, so the tip of that vector traces a circular arc of radius `a_T`; the
+law, running acceleration linearly in time, flies its chord. The largest gap between chord and
+arc is the sagitta:
+
+```
+a_error = a_T · (1 − cos(turn_budget / 2))
+```
+
+`a_error` is therefore not a second knob — it falls out of `turn_budget` and the thrust. The
+bracketed term is also the fraction of thrust not going retrograde, which is what the chord
+costs: 0.9% at 15°, 3.4% at 30°, 7.6% at 45°, 29% if the whole arc is flown as one chord. The
+job is to recover ~20%, so 15° spends under 1% of the braking to buy six well-behaved legs, and
+30° starts charging real money for two fewer.
 
 **`t_go` for a segment is a difference of arc sample times**, because the arc carries `t`.
 
-**Discrete gates, not continuous tracking**, because `lock steering`/`lock throttle` already
-re-solve the *command* every physics tick — only the target is discrete, and keeping it so
-avoids re-importing the stored-path dependence this design exists to remove.
+**Discrete legs and continuous tracking are the same machine**, separated only by `dt`. What was
+rejected was managing guidance through `lock` and `when`, which is a different question.
 
 **The terminal handoff is not a gate.** It is where the law's gains diverge (`t_go → 0`) and the
 rate-of-descent controller takes over. `landing_height` is a parameter, default well under
@@ -221,19 +334,28 @@ orbit:apoapsis` reads the *global* `orbit`, not its own parameter.
 
 ## Open
 
-1. **The up-range wedge.** The certified ray climbs at `tan γ` past PDI; the coast leaves
-   periapsis horizontally and curves up quadratically, so terrain just up-range could be
-   certified yet struck. Measured on a 2937 m periapsis over the Great Flats: clearance at PDI
-   2937 m, at −240 s **2947 m** — a ten-metre margin over the flattest ground on the body. The
-   coast genuinely competes for the binding constraint. Bounded, computable, unbuilt.
-2. **Does the planner sample the real ground track, or assume the equator?** The flight script
-   assumes equatorial. The honest version needs the orbit, and then the planner isn't purely
-   terrain geometry.
-3. **The tessellation budgets** `a_error_budget` and `turn_budget` set the gate count. Unbuilt,
-   and the claim that they "fall out" of a budget rule has the same shape as several claims that
-   turned out to be wrong. Distrust it until it's measured.
-4. **Does the in-flight closure re-solve the quadratic, or decrement plan time?** Decides whether
-   an arrival-acceleration scalar survives at all.
+1. **`clearance` for the coast rule.** How much gap to demand under the coast is the one number
+   still owned by judgment rather than derived — it is how far the terrain model is trusted. The
+   coast genuinely competes with PDI for the binding constraint: measured on a 2937 m periapsis
+   over the Great Flats, clearance at PDI was 2937 m and at −240 s up-range **2947 m**, a
+   ten-metre margin over the flattest ground on the body. Tilt onto any relief and the coast
+   binds first.
+2. **Does the sagitta argument hold in flight?** `turn_budget = 15°` assumes the law's command
+   really does interpolate linearly between a leg's endpoint accelerations, as constant jerk
+   says it should — but the law also feeds back on live state every tick, so the real command is
+   not exactly that chord. This is cheap to settle: `pitch` and `cmd_pitch` are already in the
+   recorder, have never flown, and are precisely the chord-versus-arc error. Fly 15° and read
+   them.
+3. **Is `f` a parameter or an output of the flight controller?** The arc's down-range `X` is a
+   consequence of the PDI state and the thrust, so a DOI that misses by a little leaves an arc
+   that ends off-site. Solving `f` at PDI to close the gap is the obvious lever, and it is the
+   surviving half of the old "throttle becomes the free variable" idea — but `f` is also the
+   authority reserve the closed-loop law spends absorbing error, and that job wants it pinned.
+   Both cannot be true without bounds on the solve.
+4. **Does the in-flight closure re-solve the quadratic, or decrement plan time?** The arc carries
+   `t`, so plan time is known — but the arc is nominal and the ship is actual. Re-solving keeps
+   the design honest and makes plan-time-versus-solved-time a free divergence check; decrementing
+   re-imports the stored path. Decides whether an arrival-acceleration scalar survives at all.
 5. **`integrate_arc` has no ground floor** — it integrates until the speed is gone regardless of
    altitude.
 6. **Constant `a_thrust` across the arc.** `f·a_max` is sampled once, but mass drops through a
