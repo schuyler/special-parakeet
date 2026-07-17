@@ -137,6 +137,53 @@ print "Local TWR at PDI: " + round(twr_pdi, 2)
     + "  lead angle: " + round(lead_deg, 1) + " deg"
     + "  (braking ~" + round(brake_duration) + " s).".
 
+// === FLIGHT RECORDER ===
+// Test-ladder instrument: one CSV row per second from the powered phases, so
+// flights are analyzed from telemetry instead of remembered impressions.
+// Lands in this directory (the kOS archive); overwritten on each launch.
+// Lines beginning '#' are metadata — the planning numbers each flight is
+// judged against, recorded so the CSV is self-contained and the console is
+// never the only witness. v_to_site is signed horizontal speed toward the
+// site — the reversal detector; facing_err vs throttle exposes
+// wrong-direction burning; dv_rem turns phase costs into ledger entries.
+local flightlog is "flight_log.csv".
+if exists(flightlog) { deletepath(flightlog). }
+log "# target " + round(target_lat, 4) + " " + round(target_lng, 4)
+    + "  terrain " + round(tgt:terrainheight) + " m" to flightlog.
+log "# h_pdi " + h_pdi + "  brake_throttle " + brake_throttle
+    + "  twr_pdi " + round(twr_pdi, 2) to flightlog.
+log "# lead_deg " + round(lead_deg, 2)
+    + "  brake_duration " + round(brake_duration, 1)
+    + "  brake_distance " + round(brake_distance)
+    + "  sag " + round(sag) to flightlog.
+log "# v_pe " + round(v_pe, 1)
+    + "  min_brake_duration " + round(min_brake_duration, 1)
+    + "  desired_pdi_lng " + round(wrap_longitude(tgt:lng - lead_deg), 2)
+    to flightlog.
+log "# dv_at_load " + round(ship:deltav:current, 1) to flightlog.
+log "t,phase,t_go,alt,radar,v_to_site,v_vert,aim_dist,a_cmd,throttle,facing_err,mass,dv_rem,pitch,cmd_pitch"
+    to flightlog.
+
+// pitch/cmd_pitch are degrees above the horizon, of the nose and of the
+// commanded thrust vector: cmd_pitch shows what guidance is asking for
+// (e.g. a legitimately below-horizon command while building descent rate),
+// pitch shows what the ship is doing about it.
+function log_state {
+  parameter phase, t_go, aim_geo, aim_alt, a_thrust.
+  local to_site is vxcl(up:vector, tgt:position):normalized.
+  log round(time:seconds, 1) + "," + phase + "," + round(t_go, 1) + ","
+      + round(altitude) + "," + round(alt:radar) + ","
+      + round(vdot(ship:velocity:surface, to_site), 1) + ","
+      + round(verticalspeed, 1) + ","
+      + round(aim_geo:altitudeposition(aim_alt):mag) + ","
+      + round(a_thrust:mag, 2) + "," + round(throttle, 3) + ","
+      + round(vang(a_thrust, ship:facing:vector), 1) + ","
+      + round(ship:mass, 3) + "," + round(ship:deltav:current, 1) + ","
+      + round(90 - vang(up:vector, ship:facing:vector), 1) + ","
+      + round(90 - vang(up:vector, a_thrust), 1)
+      to flightlog.
+}
+
 // === PHASE 1: DOI ===
 
 // Plan the DOI burn: a retrograde node that drops the periapsis to h_pdi,
@@ -208,6 +255,9 @@ function perform_doi {
     print "DOI plan " + attempts + ": periapsis lng "
         + round(predicted_lng, 2) + ", want " + round(desired_pdi_lng, 2)
         + " (err " + round(error, 2) + " deg).".
+    log "# doi_plan " + attempts + ": pe_lng " + round(predicted_lng, 2)
+        + "  want " + round(desired_pdi_lng, 2)
+        + "  err " + round(error, 2) to flightlog.
 
     if abs(error) < 0.2 or attempts >= 4 { break. }
     remove nd.
@@ -215,6 +265,7 @@ function perform_doi {
   }
 
   print "DOI: " + round(nd:prograde, 1) + " m/s in " + round(nd:eta) + " s.".
+  log "# doi_burn " + round(nd:prograde, 1) + " m/s" to flightlog.
   execute_node(nd).
 }
 
@@ -319,30 +370,6 @@ function solve_t_go {
     if t > 0 and (best < 0 or t < best) { set best to t. }
   }
   return best.
-}
-
-// === FLIGHT RECORDER ===
-// Test-ladder instrument: one CSV row per second from the gate flyer, so
-// flights are analyzed from telemetry instead of remembered impressions.
-// Lands in this directory (the kOS archive); overwritten on each launch.
-// v_to_site is signed horizontal speed toward the site — the reversal
-// detector; facing_err vs throttle exposes wrong-direction burning.
-local flightlog is "flight_log.csv".
-if exists(flightlog) { deletepath(flightlog). }
-log "t,phase,t_go,alt,radar,v_to_site,v_vert,aim_dist,a_cmd,throttle,facing_err"
-    to flightlog.
-
-function log_state {
-  parameter phase, t_go, aim_geo, aim_alt, a_thrust.
-  local to_site is vxcl(up:vector, tgt:position):normalized.
-  log round(time:seconds, 1) + "," + phase + "," + round(t_go, 1) + ","
-      + round(altitude) + "," + round(alt:radar) + ","
-      + round(vdot(ship:velocity:surface, to_site), 1) + ","
-      + round(verticalspeed, 1) + ","
-      + round(aim_geo:altitudeposition(aim_alt):mag) + ","
-      + round(a_thrust:mag, 2) + "," + round(throttle, 3) + ","
-      + round(vang(a_thrust, ship:facing:vector), 1)
-      to flightlog.
 }
 
 // === GATE FLYER (P63 = braking, P64 = approach) ===
@@ -596,9 +623,21 @@ function terminal_descent {
 
   // LANDED is the real signal; the fallback catches a hover balanced just
   // above contact — 5 m is landing-leg scale, -0.1 m/s is "effectively
-  // stopped."
-  wait until ship:status = "LANDED"
-      or (alt:radar < 5 and verticalspeed > -0.1).
+  // stopped." The recorder runs here too: a_cmd is the ROD servo's demand
+  // reconstructed along the commanded steering direction; t_go is not a
+  // quantity this phase has, so it logs 0; aim_dist is live distance to
+  // the site — the touchdown drift.
+  local t_logged is 0.
+  until ship:status = "LANDED"
+      or (alt:radar < 5 and verticalspeed > -0.1) {
+    if time:seconds - t_logged >= 1 {
+      local dir is (up:vector - 0.1 * vxcl(up:vector, ship:velocity:surface)):normalized.
+      log_state("TERMINAL", 0, tgt, tgt:terrainheight,
+          (g0 + 0.3 * (v_ref - verticalspeed)) * dir).
+      set t_logged to time:seconds.
+    }
+    wait 0.
+  }
   lock throttle to 0.
   print "Contact. Settling.".
   wait 3.                          // settle on the legs before releasing control
@@ -621,3 +660,5 @@ terminal_descent().        // TERMINAL (P66)
 // touchdown point to the target site.
 local miss is vxcl(up:vector, tgt:position):mag.
 print "Landed. Miss distance: " + round(miss) + " m.".
+log "# landed  miss " + round(miss) + " m  dv_rem " + round(ship:deltav:current, 1)
+    to flightlog.

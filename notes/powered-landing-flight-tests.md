@@ -161,12 +161,29 @@ bug — `orbit:period` for `orbit_:period` — already fixed this session.)
    uses ship:orbit). Not yet verified in flight — steps 1/3 signatures still pending.]
 3. **Re-fly. [DONE — flight 6, all signatures met; see above.]** The debugging campaign
    is closed. What follows is the optimization campaign.
-4. **Telemetry gaps before optimizing** (the CSV must be able to say *why* a flight's
-   Δv changed, not just that it did): (a) planning numbers (lead, brake_duration,
-   planned t_go, desired PDI lng, DOI plan errors) into the CSV header — console is
-   still the only witness; (b) log TERMINAL rows (currently `log_state` lives only in
-   `fly_gate`, so the last ~150 m is dark); (c) a mass or `ship:deltav` column so true
-   Δv per phase comes from the log, not from integrating `a_cmd` at 1 Hz.
+4. **Telemetry gaps before optimizing — [DONE 2026-07-16]**: planning numbers and DOI
+   plan attempts now go to the CSV as `#` metadata lines; TERMINAL logs at 1 Hz;
+   `mass`/`dv_rem` columns make phase Δv a ledger read; `pitch`/`cmd_pitch` columns
+   (degrees above horizon, nose and commanded thrust) added after flight 7.
+
+   **Flight 7 (baseline, 25 km circular equatorial, h_pdi 3000; archived
+   `flight_log_flight7_baseline_25km.csv`): miss 0 m, 244.1 m/s total** — DOI+coast
+   11.9, BRAKE 100.2, APPROACH 107.6, TERMINAL 24.4. DOI converged on plan 1
+   (err 0.05°): circular orbit + kepler fix ended the placement fight. Two findings
+   for the redesign: (a) early BRAKE *commands nose-down*: the profile must take
+   v_vert from 0 (PDI is a periapsis) to −30 m/s (the gate) in ~52 s, average
+   −0.58 m/s² — but at 170 m/s horizontal the centrifugal term v²/r (≈ 0.46)
+   cancels Minmus gravity (≈ 0.445) almost exactly, so at BRAKE entry free fall
+   does not descend at all; gravity only reappears as horizontal speed dies. The
+   front-loaded remainder is thrust below the horizon. Δv paid twice: built by
+   engine, removed by engine. Coupling for the targeting redesign: shortening
+   BRAKE steepens this (same −30 in less time), so hg_descent_rate / hg_height /
+   h_pdi / T are one coupled vertical trade, not separate knobs. (b) t_go decrement drifts ~1 s per 10 s re-solve in BRAKE
+   (corrections −1.2, −1.0 s, absorbed without transients; APPROACH none > 0.5 s):
+   10 s cadence is fine mid-phase, weakest near handoff where the last re-solve can
+   be ~10 s stale against a t_handoff of 5 — likely part of the 76-vs-60 m/s gate
+   arrival overshoot. Candidate fix for the redesign: re-solve cadence scaled to
+   t_go (Apollo re-solved every 2 s guidance cycle).
 5. **Targeting redesign (Δv-optimal planning), agreed 2026-07-16.** Criterion: minimize
    Δv subject to soft-and-on-target from a rough orbit; timing/path shape don't matter
    in KSP. Direction: invert the planning dependency chain — T_brake from the
@@ -178,11 +195,34 @@ bug — `orbit:period` for `orbit_:period` — already fixed this session.)
    terrain-model optimism, so the floor is deliberate). Flight 6 says the tail is now
    the fuel hog: ~45 of APPROACH's ~109 m/s is gravity hang — tightening the gates
    (lower/faster high gate, shorter APPROACH leg) is the next lever after BRAKE.
+5a. **Targeting design (agreed 2026-07-16, BRAKE-side only this round; hg_offset /
+   hg_height / low gate / APPROACH's a_arrival stay fixed).** Principle: *during BRAKE
+   the vertical axis rides gravity.* With the horizontal profile fixed (constant decel
+   a_h at design throttle, v_h(t) linear), the zero-thrust vertical is closed-form —
+   gravity net of the centrifugal support that dies as the ship slows:
+   `vv_gate = g·T − (v_pe³ − v_hg³)/(3·r·a_h)` (down-positive) and
+   `drop = g·T²/2 − v_pe³·T/(3·r·a_h) + (v_pe⁴ − v_hg⁴)/(12·r·a_h²)`.
+   Chain: measure orbit → a_h, T = (v_pe − v_hg)/a_h, midpoint lead (exact: zero
+   horizontal jerk) → vv_gate and drop from the free-fall integrals (hg_descent_rate
+   is *derived*, not inherited) → h_pdi = gate_alt + drop, floored by
+   terrain + clearance (clearance replaces h_pdi as the user parameter) → BRAKE's
+   closure scalar derived for consistency: `a_arrival_brake = (6·(D+sag) −
+   4·vv_gate·T)/T²` (the value that makes the flight quadratic reproduce T at PDI)
+   → exact pre-flight feasibility: thrust demand at both endpoints of both legs
+   (|affine| maxes at endpoints) within authority, plus the clearance floor.
+   No cap on the derived vv_gate: the APPROACH-leg endpoint check is the clamp
+   (a magic cap number would just shadow it). The linear-accel law tracks the
+   quadratic g_free(t) curve to within (Δv_h)²/(4r) ≈ 0.05 m/s² of residual thrust —
+   negligible. Test plan: fly the overpowered craft with brake_throttle turned down
+   to stretch T into the design-relevant regime.
 6. Open questions, deliberately deferred: APPROACH lead/duration consistency when BRAKE
    hands over off-spec (flight 6 handed over at 78 vs 60 m/s spec via the t_handoff=5
    early exit, digested without reversal — but the targeting redesign should make the
    handoff state part of the plan); terminal-phase position feedback for sub-meter work
-   (deferred: a Kerbal can walk).
+   (deferred: a Kerbal can walk); **throttle deadzone** (Schuyler, 2026-07-16 — pinned,
+   not yet discussed); gates-as-envelopes handoff (analyzed, deliberately not flown:
+   feasibility math is cheap but the handoff trigger needs margins/hysteresis and an
+   early-fire guard on high-TWR craft — book sidebar material instead).
 
 ## Process notes (hard-won)
 
