@@ -62,6 +62,128 @@ if twr_pdi < 1.5 {
   wait until false.
 }
 
+// === THE ARC ===
+// The fuel-optimal airless descent is a gravity turn flown in reverse: hold
+// thrust surface-retrograde and let gravity rotate the velocity vector from
+// horizontal to straight down as the burn bleeds off speed, arriving vertical
+// over the target. Retrograde is the minimum-Delta-v direction to null a
+// velocity vector; it cancels the vertical component while the craft is still
+// fast and centrifugal support makes vertical cheap; and it spends the least
+// time slow, where gravity loss accrues fastest.
+//
+// Euler's method, once, at PDI: speed, pitch, altitude and downrange stepped
+// forward by dt until the speed is gone. Returns one sample per step, which
+// gives the drop, the downrange, the duration, and the state at every point
+// on the arc, which is what places the gates.
+function integrate_arc {
+  parameter h_start.      // PDI altitude, m
+  parameter speed_pdi.    // surface speed at PDI, m/s
+  parameter a_thrust.     // retrograde thrust accel, m/s^2 = f * a_max
+  parameter dt.           // integration step, s
+  // Speed at which the arc ends, m/s. d_pitch carries speed in its
+  // denominator, so the turn rate climbs steeply as speed falls; stopping
+  // above zero keeps it finite and hands the rest of the descent to TERMINAL.
+  parameter speed_low.
+  // Cap on the number of steps. An arc that spends them all with speed still
+  // above speed_low needs more thrust than this craft has: the caller reads
+  // that off the last sample and aborts before anything burns.
+  parameter max_steps.
+
+  local speed is speed_pdi.
+  local pitch is 0.       // degrees above the horizon; PDI is a periapsis
+  local h is h_start.
+  local theta is 0.       // ground-track angle swept since PDI, radians
+  local t is 0.
+  local arc is list().
+
+  until speed <= speed_low or arc:length >= max_steps {
+    local r is body:radius + h.
+    local g is body:mu / r ^ 2.
+
+    arc:add(lexicon("t", t, "speed", speed, "pitch", pitch, "h", h,
+                    "x", theta * body:radius)).
+
+    // Every increment reads the state as it stands; they all apply together
+    // at the bottom.
+    //
+    // Thrust points straight back along the velocity, so all of it changes
+    // speed. Gravity splits: the part along the path adds speed as the nose
+    // drops below the horizon, and the part across the path steers, on the
+    // next line.
+    local d_speed is (-a_thrust - g * sin(pitch)) * dt.
+    // Two rates turn pitch. The local horizon rotates under the ship at
+    // speed*cos(pitch)/r as it flies around the body, tipping the nose up.
+    // Gravity pulls across the velocity at g*cos(pitch)/speed, tipping it
+    // down. The two match at orbital speed and pitch holds. Below it gravity
+    // wins and the path steepens toward vertical; above it the horizon wins
+    // and the arc climbs.
+    local d_pitch is (speed / r - g / speed) * cos(pitch)
+                     * constant:radtodeg * dt.
+    // The vertical and horizontal halves of the speed.
+    local d_h is speed * sin(pitch) * dt.
+    local d_theta is speed * cos(pitch) / r * dt.
+
+    set speed to speed + d_speed.
+    set pitch to pitch + d_pitch.
+    set h     to h     + d_h.
+    set theta to theta + d_theta.
+    set t     to t     + dt.
+  }
+  return arc.
+}
+
+// === TERRAIN UNDER THE TRACK ===
+// PDI is the seam. It is the descent ellipse's periapsis, so the coast comes
+// down to it and the arc leaves from it -- two different curves meeting at the
+// one point whose time and position we know exactly. The low stretch of the
+// path straddles it, so the walk runs outward from it in both directions and
+// returns the smallest gap between path and ground that it finds. That gap is
+// what the PDI floor is set against.
+//
+// Backward is the constraint at line 23, "the descent ellipse must clear every
+// ridge": the coast is low enough for terrain to reach it well up-range, and
+// nothing else in the design looks there. Forward is the arc, which rises from
+// PDI but not as fast as a hill can.
+//
+// The track is the equator, per the Phase 0 assumption at line 34. Both halves
+// account for the body turning underneath -- the coast through geoposition_at,
+// the arc through its own elapsed time, the way plan_doi computes site_advance.
+function terrain_clearance_under_track {
+  parameter plan.                 // from place_doi: the node and its PDI time
+  parameter arc.                  // from integrate_arc
+  parameter max_terrain_height.   // highest terrain on the body, m above datum
+  parameter dt_coast.             // coast sampling step, s
+
+  local descent is plan["node"]:orbit.
+  local t_pdi is plan["t_pdi"].
+  // No point on the path is higher than the orbit it left, so no gap is wider.
+  local worst is ship:orbit:apoapsis.
+
+  // The coast, backward from PDI. Above max_terrain_height nothing on the body
+  // can reach the ship, which is where the walk ends.
+  local t is t_pdi.
+  until false {
+    local state is orbit_at(t, descent).
+    local h is state["position"]:mag - body:radius.
+    if h > max_terrain_height { break. }
+    set worst to min(worst, h - geoposition_at(t, descent):terrainheight).
+    set t to t - dt_coast.
+  }
+
+  // The arc, forward from PDI. Its samples carry their own altitude and
+  // downrange; the ground beneath them has turned east by the elapsed time.
+  local pdi_lng is geoposition_at(t_pdi, descent):lng.
+  for s in arc {
+    local lng is wrap_longitude(pdi_lng
+        + s["x"] / body:radius * constant:radtodeg
+        - 360 * s["t"] / body:rotationperiod).
+    set worst to min(worst,
+        s["h"] - body:geopositionlatlng(0, lng):terrainheight).
+  }
+
+  return worst.
+}
+
 // Braking geometry, shared by the feasibility check and the lead angle.
 local r_pe is body:radius + h_pdi.
 local sma_park is (ship:orbit:semimajoraxis + r_pe) / 2.
@@ -192,7 +314,7 @@ function log_state {
 function plan_doi {
   parameter tgt_lng, lead.
   parameter lng_bias is 0.   // placement correction, degrees east; fed
-                             // back by perform_doi's periapsis check
+                             // back by place_doi's periapsis check
 
   // The site moves east while we coast half an orbit down to PDI, so aim
   // at where it will be. Coast duration comes from the descent ellipse;
@@ -223,12 +345,19 @@ function plan_doi {
   return node(t_burn:seconds, 0, 0, v_new - v_old).
 }
 
-function perform_doi {
+// Place the DOI node: plan it, then check the plan against itself and feed the
+// periapsis miss back into the burn longitude until it converges. Returns the
+// node ADDED to the flight plan, with the placement it settled on -- the
+// caller owns removing it or burning it, and owns reporting it.
+function place_doi {
   // Where the ship should be, in body-frame longitude, at PDI.
   local desired_pdi_lng is wrap_longitude(tgt:lng - lead_deg).
   local bias is 0.
   local nd is 0.
   local attempts is 0.
+  local predicted_lng is 0.
+  local error is 0.
+  local t_pdi is 0.
 
   until false {
     set nd to plan_doi(tgt:lng, lead_deg, bias).
@@ -248,22 +377,28 @@ function perform_doi {
     // rotating the descent ellipse's periapsis away from the burn point,
     // which matters because a few m/s of radial velocity is large
     // against a small DOI burn.
-    local t_pdi is time_of_periapsis(timestamp(nd:time), nd:orbit).
-    local predicted_lng is geoposition_at(t_pdi, nd:orbit):lng.
-    local error is wrap_longitude(predicted_lng - desired_pdi_lng).
+    set t_pdi to time_of_periapsis(timestamp(nd:time), nd:orbit).
+    set predicted_lng to geoposition_at(t_pdi, nd:orbit):lng.
+    set error to wrap_longitude(predicted_lng - desired_pdi_lng).
     set attempts to attempts + 1.
     print "DOI plan " + attempts + ": periapsis lng "
         + round(predicted_lng, 2) + ", want " + round(desired_pdi_lng, 2)
         + " (err " + round(error, 2) + " deg).".
-    log "# doi_plan " + attempts + ": pe_lng " + round(predicted_lng, 2)
-        + "  want " + round(desired_pdi_lng, 2)
-        + "  err " + round(error, 2) to flightlog.
 
     if abs(error) < 0.2 or attempts >= 4 { break. }
     remove nd.
     set bias to bias - error.
   }
+  return lexicon("node", nd, "t_pdi", t_pdi, "pe_lng", predicted_lng,
+                 "want", desired_pdi_lng, "err", error, "attempts", attempts).
+}
 
+function perform_doi {
+  local plan is place_doi().
+  local nd is plan["node"].
+  log "# doi_plan " + plan["attempts"] + ": pe_lng " + round(plan["pe_lng"], 2)
+      + "  want " + round(plan["want"], 2)
+      + "  err " + round(plan["err"], 2) to flightlog.
   print "DOI: " + round(nd:prograde, 1) + " m/s in " + round(nd:eta) + " s.".
   log "# doi_burn " + round(nd:prograde, 1) + " m/s" to flightlog.
   execute_node(nd).
