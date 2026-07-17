@@ -185,11 +185,12 @@ forced by the law's own divergence as `t_go → 0`, fixed at `terrain + h_lg`. T
 *output* of the body and craft, which is the generality we want; "high gate + low gate,
 always two" is an Apollo inheritance the budget rule replaces.
 
-**Where this points (named, not committed).** Push the tessellation finer and the gates
-dissolve: carry the arc and feed the law a moving target a fixed lead-time ahead — trajectory
-tracking, no discrete gates. The two-or-three-gate scheme is its coarsest useful form. First
-build the coarse one (integrate at PDI, tessellate to the two budgets); the continuous form is
-the destination if the coarse one leaves ΔV on the table.
+**Continuous tracking, weighed and declined.** The fine-tessellation limit is trajectory
+tracking — carry the arc, feed the law a moving target, no discrete gates. We chose against
+it: `lock steering`/`lock throttle` already re-solve the *command* every physics tick, so
+only the *target* is discrete, and keeping it so avoids re-importing the stored-path
+dependence the campaign spent five flights removing — for a ΔV saving the sag budget shows is
+negligible. The discrete gates are the design.
 
 ## Low gate: parameterize and walk it down
 
@@ -227,11 +228,31 @@ law shows room. Saturation guard and attitude gate stay.
 
 - Sample the arc how? → **Tessellate to a sag + turn budget**; ≥1 gate, count is an output.
   Interior gate lands at the pitchover.
-- Precompute the arc or track it continuously? → **Precompute at PDI** first (simple);
-  continuous tracking is the named destination.
+- Precompute the arc or track it continuously? → **Precompute at PDI, discrete gates.**
+  Continuous tracking weighed and declined (above).
 - Design margin `f`? → **0.85**, swept in flight.
 - Low-gate height? → **Parameter**, ~50 m default, walked down with telemetry.
 - Terminal controller? → **Keep it.**
+
+## Open items
+
+Named, not yet resolved. Each gets pinned as we build, in the campaign's measure-don't-assume
+style — reason out a starting value, let a flight move it. Resolutions proposed in chat; folded
+in on approval.
+
+1. **Constant `g`/`r` in the rates vs. recomputing them from `h` each step.** Over the low-TWR
+   craft's ~3 km drop on Minmus, `g` moves ~9%. Recomputing is nearly free but couples the arc
+   shape to `h_pdi` (see 2).
+2. **The `v_pe ↔ h_pdi` coupling → an outer iteration.** `v_pe` comes from vis-viva at
+   `h_pdi`, which is itself an output of the integration; with 1, `g,r` couple too. This is
+   what the "Place PDI" block's circular-looking `drop = h_pdi_start − h_end` is waiting on.
+3. **Integration step `dt` and stop speed `v_low`.** `dt` trades accuracy against the IPU
+   budget; `v_low` is where the arc ends (the pitchover is singular at exactly `v = 0`).
+4. **The tessellation tolerances `sag_budget` and `turn_budget`.** These set the gate count and
+   the pitchover split.
+5. **The arc-sample → gate-lexicon read (the Block-4-equivalent — the actual build).** How a
+   sample `(v, γ, h, x)` becomes a gate the existing `fly_gate` consumes, and how the total
+   downrange feeds the existing DOI lead placement.
 
 ## Process and predicted signatures
 
