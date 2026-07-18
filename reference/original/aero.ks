@@ -69,6 +69,19 @@ function heading_error {
   return mod(target_bearing - compass_heading() + 540, 360) - 180.
 }
 
+// Great-circle distance over the ground to a geo coordinate, metres.
+// GeoCoordinates:DISTANCE is slant range (includes the altitude difference),
+// so it never reaches ~0 from cruise -- useless for arrival tests. Here we
+// take the central angle between the body-center-to-ship and
+// body-center-to-waypoint vectors and multiply by the body radius.
+function ground_distance {
+  parameter geo.   // a GeoCoordinates (e.g. latlng(lat, lng))
+  local center_to_ship is -ship:body:position.
+  local center_to_geo  is geo:position - ship:body:position.
+  return ship:body:radius * constant:degtorad
+       * vang(center_to_ship, center_to_geo).
+}
+
 function angle_of_ascent {
   return 90 - vang(ship:velocity:surface, ship:up:vector).
 }
