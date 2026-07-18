@@ -19,7 +19,7 @@
 
 @lazyglobal off.
 
-runoncepath("aero").   // provides pitch_angle()
+runoncepath("aero").   // provides pitch_angle() and bank_angle()
 
 // --- tunables -------------------------------------------------------------
 local cruise_throttle  is 0.5.    // fixed throttle; raise if the nose can't
@@ -33,16 +33,6 @@ local alt_pid   is pidloop(0.05, 0.001, 0,     -12, 12).
 local pitch_pid is pidloop(0.01, 0,     0.005, -1,  1).
 // bank (deg)     -> aileron  (-1..1)
 local roll_pid  is pidloop(0.01, 0,     0.005, -1,  1).
-
-// --- helpers --------------------------------------------------------------
-// Bank angle in degrees; 0 = wings level. starvector points out the right
-// wing. Banking right dips it below horizontal, so its component along "up"
-// goes negative -- negate so that right-wing-down reads positive.
-// SIGN CHECK: if the wings-level loop rolls AWAY from level instead of
-// toward it, this sign (or the roll_pid gain sign) is inverted -- flip it.
-function bank_angle {
-  return -arcsin(vdot(ship:facing:starvector, ship:up:vector)).
-}
 
 // --- setup ----------------------------------------------------------------
 local target_alt is ship:altitude.        // capture present altitude (ASL)
