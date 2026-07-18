@@ -51,6 +51,24 @@ function bank_angle {
   return -arcsin(vdot(ship:facing:starvector, ship:up:vector)).
 }
 
+// Compass heading of the nose, degrees, 0..360 (0 = north, 90 = east).
+// kOS has no ship:heading -- project the nose onto the local horizontal
+// plane and measure its angle from north toward east. east = up x north;
+// kOS's frame is left-handed, so this vcrs order yields +east.
+// SIGN CHECK: command heading 090 and confirm the nose swings toward east.
+function compass_heading {
+  local east is vcrs(ship:up:vector, ship:north:vector).
+  return mod(arctan2(vdot(east, ship:facing:forevector),
+                     vdot(ship:north:vector, ship:facing:forevector)) + 360, 360).
+}
+
+// Signed heading error to a target bearing, wrapped to [-180, 180] so a
+// turn always takes the short way around (350 -> 010 is +20, not -340).
+function heading_error {
+  parameter target_bearing.
+  return mod(target_bearing - compass_heading() + 540, 360) - 180.
+}
+
 function angle_of_ascent {
   return 90 - vang(ship:velocity:surface, ship:up:vector).
 }
