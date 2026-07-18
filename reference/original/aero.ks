@@ -43,6 +43,14 @@ function pitch_angle {
   return 90 - vang(ship:facing:vector, ship:up:vector).
 }
 
+// Bank angle in degrees; 0 = wings level, right-wing-down positive.
+// starvector points out the right wing; banking right dips it below
+// horizontal, so its component along "up" goes negative -- negate.
+// SIGN CHECK: if a wings-level loop rolls away from level, flip this sign.
+function bank_angle {
+  return -arcsin(vdot(ship:facing:starvector, ship:up:vector)).
+}
+
 function angle_of_ascent {
   return 90 - vang(ship:velocity:surface, ship:up:vector).
 }
