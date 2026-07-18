@@ -352,10 +352,14 @@ orbit:apoapsis` reads the *global* `orbit`, not its own parameter.
    surviving half of the old "throttle becomes the free variable" idea — but `f` is also the
    authority reserve the closed-loop law spends absorbing error, and that job wants it pinned.
    Both cannot be true without bounds on the solve.
+   *Settled by `powered-descent-invariants.md`: `f` is an output, continuously re-solved;
+   `f_max` survives as the authority reserve, now a bound on the solve.*
 4. **Does the in-flight closure re-solve the quadratic, or decrement plan time?** The arc carries
    `t`, so plan time is known — but the arc is nominal and the ship is actual. Re-solving keeps
    the design honest and makes plan-time-versus-solved-time a free divergence check; decrementing
    re-imports the stored path. Decides whether an arrival-acceleration scalar survives at all.
+   *Settled by `powered-descent-invariants.md`: re-solve — and not just `t_go` but the whole
+   arc, from live state. No arrival-acceleration scalar survives.*
 5. **`integrate_arc` has no ground floor** — it integrates until the speed is gone regardless of
    altitude.
 6. **Constant `a_thrust` across the arc.** `f·a_max` is sampled once, but mass drops through a

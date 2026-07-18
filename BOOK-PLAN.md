@@ -303,7 +303,26 @@ speculation, not planning.
 
 ## Status
 
-*Last updated: 2026-07-13*
+*Last updated: 2026-07-18*
+
+- **Done (2026-07-18):** `notes/powered-descent-invariants.md` + `reference/original/
+  powered_descent_live.ks` — the descent's invariants worked out with Schuyler, and the
+  rendition they imply. The note establishes that the retrograde hold makes the braking
+  trajectory a one-parameter family (state + throttle → arc), so the descent table in
+  `powered_descent.ks` is a cache of a computation that can run live; everything downstream
+  of the cache's staleness (trim gain, overshoot allowance, taper, ratchet) deletes, and
+  the safety invariant collapses to one test — "does any throttle keep the arc above the
+  gate?" — run identically pre-coast and every look in flight. The script re-solves the
+  throttle from live state every few seconds (bisection over the same Euler march, seeded
+  from the ship instead of periapsis), with the gate as the floor under the command and
+  `f_max` as the ceiling. Settles capability-driven-descent.md open items 3 and 4
+  (annotated there). Also traced the lesson through the old landing family: the old
+  scripts buried periapsis below the surface (trajectory hits the site, burn is timed);
+  Apollo's inversion — periapsis safe and up-range, the burn brings you down — is what let
+  the DOI/coast/PDI/terminal phases come apart. Strong chapter spine for Part IV: the
+  phases discovered by getting them wrong. **Unflown**: the note's Predictions section
+  lists the telemetry signatures to check on first flight (throttle staircase vs
+  oscillation, handoff miss, Δv vs the 244 m/s baseline).
 
 - **Done (2026-07-13):** `notes/klumpp-guidance-derivation.md` — companion to the powered-
   descent guide, derived from a reader Q&A thread. Two things the sibling guide only stated
