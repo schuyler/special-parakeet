@@ -2,10 +2,13 @@
 //
 // The answer to a question: how short can this program be and remain
 // precise, efficient in the regime a well-placed PDI permits, and readable
-// by someone with a modest grasp of calculus? About eighty lines of code.
-// Everything powered_descent_live.ks carries beyond these lines is envelope
-// protection, instrumentation, or coping with a plan that missed; this file
-// assumes the plan is good and keeps only what flies. Design and the full
+// by someone with a modest grasp of calculus? About eighty lines of code
+// that fly, plus the flight recorder — kept because the working agreement
+// (no claim about flight behavior without telemetry) is part of the
+// program, not part of the scaffolding: a spike that cannot be debugged
+// is not shorter, only blinder. Everything powered_descent_live.ks
+// carries beyond this file is envelope protection or coping with a plan
+// that missed; this file assumes the plan is good. Design and the full
 // argument: notes/powered-descent-invariants.md.
 //
 // Assumes (plan_doi.ks's contract): the DOI burn is behind us, PDI is the
@@ -93,6 +96,30 @@ function solve_f {
   return bisect(miss, f_min, f_max, 0.001).
 }
 
+// === FLIGHT RECORDER ===
+// One CSV row per second from the powered phases, same columns as the
+// sibling renditions so one analysis reads all three. Lines beginning '#'
+// are the planning numbers the flight is judged against.
+local flightlog is "flight_log.csv".
+
+function log_state {
+  parameter phase, t_go, aim_geo, aim_alt, a_thrust.
+  parameter cross is 0.
+  local to_site is vxcl(up:vector, tgt:position):normalized.
+  log round(time:seconds, 1) + "," + phase + "," + round(t_go, 1) + ","
+      + round(altitude) + "," + round(alt:radar) + ","
+      + round(vdot(ship:velocity:surface, to_site), 1) + ","
+      + round(verticalspeed, 1) + ","
+      + round(aim_geo:altitudeposition(aim_alt):mag) + ","
+      + round(a_thrust:mag, 2) + "," + round(throttle, 3) + ","
+      + round(vang(a_thrust, ship:facing:vector), 1) + ","
+      + round(ship:mass, 3) + "," + round(ship:deltav:current, 1) + ","
+      + round(90 - vang(up:vector, ship:facing:vector), 1) + ","
+      + round(90 - vang(up:vector, a_thrust), 1) + ","
+      + round(cross)
+      to flightlog.
+}
+
 // === COAST TO PDI ===
 print "Coasting to PDI: " + round(eta:periapsis) + " s.".
 warpto(time:seconds + eta:periapsis - 60).
@@ -103,8 +130,19 @@ wait until eta:periapsis <= 1.
 // === BRAKING ===
 local f_cmd is solve_f().
 if f_cmd < 0 { set f_cmd to f_max. }   // unreachable site: brake hard, land short
+local t_go is endpoint(f_cmd)["t"].
 print "BRAKE: f " + round(f_cmd, 3) + ", "
     + round(dist_to_site() / 1000, 1) + " km to the site.".
+
+if exists(flightlog) { deletepath(flightlog). }
+log "# target " + round(target_lat, 4) + " " + round(target_lng, 4)
+    + "  terrain " + round(tgt:terrainheight) + " m" to flightlog.
+log "# h_pdi " + round(ship:altitude) + "  speed_pdi "
+    + round(ship:velocity:surface:mag, 1) + "  f_ignition " + round(f_cmd, 4)
+    + "  t_go " + round(t_go, 1) + "  dist " + round(dist_to_site())
+    + "  dv_at_pdi " + round(ship:deltav:current, 1) to flightlog.
+log "t,phase,t_go,alt,radar,v_to_site,v_vert,aim_dist,a_cmd,throttle,facing_err,mass,dv_rem,pitch,cmd_pitch,cross"
+    to flightlog.
 
 // Retrograde, biased: pretend the ship owes a sideways speed of y/20
 // toward the site's plane (y its offset, 20 s the closing time constant)
@@ -122,12 +160,21 @@ lock throttle to f_cmd.
 // have collapsed, so the last solution rides to the handoff; terminal
 // owns the final metres.
 local t_solved is time:seconds.
+local t_logged is 0.
 until ship:velocity:surface:mag <= speed_handoff {
   if ship:velocity:surface:mag > 6 * speed_handoff
       and time:seconds - t_solved >= 5 {
     local f is solve_f().
-    if f > 0 { set f_cmd to f. }
+    if f > 0 { set f_cmd to f. set t_go to endpoint(f)["t"]. }
     set t_solved to time:seconds.
+  }
+  if time:seconds - t_logged >= 1 {
+    local n is vcrs(ship:velocity:surface, up:vector):normalized.
+    log_state("BRAKE", max(0, t_go - (time:seconds - t_solved)),
+        tgt, tgt:terrainheight,
+        f_cmd * (ship:availablethrust / ship:mass) * braking_dir():normalized,
+        vdot(tgt:position, n)).
+    set t_logged to time:seconds.
   }
   wait 0.
 }
@@ -150,12 +197,23 @@ function tilt {
 }
 lock steering to lookdirup(tilt(), ship:facing:topvector).
 gear on.
-wait until ship:status = "LANDED"
-    or (alt:radar < 5 and verticalspeed > -0.1).
+set t_logged to 0.
+until ship:status = "LANDED"
+    or (alt:radar < 5 and verticalspeed > -0.1) {
+  if time:seconds - t_logged >= 1 {
+    log_state("TERMINAL", 0, tgt, tgt:terrainheight,
+        (g0 + 0.3 * (v_ref - verticalspeed)) * tilt():normalized).
+    set t_logged to time:seconds.
+  }
+  wait 0.
+}
 lock throttle to 0.
 wait 3.
 unlock steering.
 unlock throttle.
 set ship:control:pilotmainthrottle to 0.
 set config:ipu to ipu_prior.
-print "Landed. Miss: " + round(vxcl(up:vector, tgt:position):mag) + " m.".
+local miss is vxcl(up:vector, tgt:position):mag.
+print "Landed. Miss: " + round(miss) + " m.".
+log "# landed  miss " + round(miss) + " m  dv_rem "
+    + round(ship:deltav:current, 1) to flightlog.

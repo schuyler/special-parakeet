@@ -323,12 +323,14 @@ speculation, not planning.
   phases discovered by getting them wrong. **Unflown**: the note's Predictions section
   lists the telemetry signatures to check on first flight (throttle staircase vs
   oscillation, handoff miss, Δv vs the 244 m/s baseline). Companion spike
-  `powered_descent_min.ks`: the same design with all envelope protection and
-  instrumentation removed — ~80 statements, five ideas, no orbital mechanics (it only
-  ever integrates from the live ship), `landing_height` absent because the planner spent
-  it into the ellipse. Candidate for the chapter's presented listing, with `_live` as the
-  "what a flyable version adds" follow-on. Its lateral law (velocity bias, tau = 20 s) is
-  simpler than `_live`'s constant-jerk law and equally unflown.
+  `powered_descent_min.ks`: the same design with all envelope protection removed — ~80
+  statements that fly plus the flight recorder (kept on Schuyler's call: telemetry is the
+  working agreement, so the recorder is part of the minimum, not scaffolding; same CSV
+  columns as the siblings). Five ideas, no orbital mechanics (it only ever integrates
+  from the live ship), `landing_height` absent because the planner spent it into the
+  ellipse. Candidate for the chapter's presented listing, with `_live` as the "what a
+  flyable version adds" follow-on. Its lateral law (velocity bias, tau = 20 s) is simpler
+  than `_live`'s constant-jerk law and equally unflown.
 
 - **Done (2026-07-13):** `notes/klumpp-guidance-derivation.md` — companion to the powered-
   descent guide, derived from a reader Q&A thread. Two things the sibling guide only stated
