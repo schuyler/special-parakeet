@@ -303,7 +303,34 @@ speculation, not planning.
 
 ## Status
 
-*Last updated: 2026-07-18*
+*Last updated: 2026-07-19*
+
+- **Done (2026-07-19):** `reference/original/plan_doi.ks` revised in place to plan for
+  `powered_descent_min.ks` instead of the table-flying controller. **Flight news first**:
+  the min rendition has now flown — pinpoint Minmus landings at TWR ~37 and the same craft
+  thrust-limited to TWR ~2 (Schuyler's report), so the invariants note's predictions have
+  telemetry behind them and the min design is the one the planner should serve. Review
+  confirmed the controller has no fuel knob left: the braking Δv is fixed by PDI placement
+  (higher solved throttle = shorter burn = less gravity loss), terminal is free fall plus a
+  kinematic `f_max` arrest, and the optimal coast-then-`f_max` descent is the limit the
+  controller already contains — so efficiency lives entirely in the plan, which is what the
+  revision leans into. Changes: (1) the fixed-step `integrate_arc` replaced with min's
+  adaptive-step `endpoint`, nearly verbatim — seed from the candidate ellipse instead of
+  the live ship, accuracy bounds (`pitch_tol`, `v_frac`) as parameters so the coarse tier
+  can loosen them; still duplicated by choice, not yet a shared library. (2) The overshoot
+  allowance, half-step error probe, `x_shrink_per_f` trim gain, headroom-vs-allowance
+  check, and the deliberate arrive-long lead all deleted — the live re-solve corrects both
+  signs of error, so arriving long just holds the flown throttle above the solved one; the
+  endpoint is placed AT the site. (3) Cross-track check recast for min's τ = 20 s yaw law:
+  bias angle at PDI and the residual a τ-closure leaves at handoff, replacing the old
+  `6y/t_go²` capacity integral. (4) `f_solved` margins reported against both bounds
+  (authority to shorten and to stretch). (5) New gamma sweep: the coarse fixed point run
+  at 0.75×/1×/1.5× the asked slope, each priced (DOI + arc Δv), printed and logged — the
+  one fuel judgment, priced instead of sloganized. Parameter list 11 → 7. **Unflown**: the
+  revised planner. Open items from the review of min itself (not acted on): the ignition
+  fallback `f_cmd = f_max` conflates bisect's two bracket failures (safe either way, but
+  the log can't tell which happened), and `bisect`'s failure path prints four lines that
+  would tear the fixed-row readout mid-burn.
 
 - **Done (2026-07-18):** `notes/powered-descent-invariants.md` + `reference/original/
   powered_descent_live.ks` — the descent's invariants worked out with Schuyler, and the
