@@ -13,9 +13,12 @@ only side effect and `remove nextnode` undoes it.
 
 - **First run:** compiles; wall-clock of the solve (target ≤ ~10 s — this is where the
   `config:ipu` claims get checked); `doi_plan.log` written; node placed. Signatures:
-  coarse tier settles in ~3–5 passes and fine in 2; placement error < 0.2°; the node's
-  delivered periapsis within metres of `h_pdi`; the log's own numbers satisfy
-  `h_pdi = terrain + landing_height + X·tan γ` as an arithmetic identity.
+  the fixed point settles inside its 12-pass budget and placement in ≤ 3 passes;
+  placement error < 0.2°; the node's delivered periapsis within metres of `h_pdi`; the
+  log's own numbers satisfy `h_pdi = terrain + landing_height + X·tan γ` to within
+  `x_tol·tan γ` (the placement loop stops when the endpoint's move is inside the
+  corridor slack, and reports the pair it certified as interchangeable, not a
+  re-derived one).
 - **Repeat the same γ:** identical numbers. Everything is on rails — nondeterminism
   means a bug.
 - **γ sweep** (say 1°/2°/4°/8°), removing the node between runs: the first

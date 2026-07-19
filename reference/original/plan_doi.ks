@@ -20,16 +20,11 @@
 // can save or waste is decided here — which is why the sweep below prices
 // the judgment instead of leaving the trade a slogan.
 //
-// What is gone since the table-flying controller, and why: that controller
-// froze a plan at PDI and trimmed toward it, so this file booked an
-// overshoot allowance sized to the model's self-measured error, placed the
-// endpoint deliberately long of the site, and checked the trim gain's
-// headroom against the allowance. The live re-solve corrects both signs of
-// error from fresh state every few seconds, so a plan that arrives long is
-// no longer protection — it is just a burn flown above the solved throttle
-// for its whole length. The endpoint is placed AT the site, and what
-// margin-keeping remains is reported as what it is: the solved throttle's
-// distance below the ceiling.
+// The endpoint is placed at the site: the flight controller re-solves its
+// throttle from live state every few seconds and corrects both signs of
+// error, so the plan holds no overshoot allowance. What margin remains is
+// reported as what it is: the solved throttle's distance below the
+// ceiling.
 
 @lazyglobal off.
 
@@ -48,11 +43,14 @@ run "common".
 parameter gamma.
 parameter target_lat is 0.
 parameter target_lng is 0.
-// The arc contract: speed_handoff and f_max must match what
-// powered_descent_min.ks is run with, or the descent priced here is not
-// the descent flown. landing_height is the planner's own — the handoff
-// clearance it spends into the ellipse; the flight controller never sees
-// the number, which is the design.
+// The arc contract: f_max must match the authority ceiling
+// powered_descent_min.ks is run with, or the throttle priced here is not
+// the throttle flown. speed_handoff is where the planner stops pricing
+// the arc; the flight controller brakes to its attitude seam and re-solves
+// from live state, so the two ends need only describe the same descent.
+// landing_height is the planner's own — the handoff clearance it spends
+// into the ellipse; the flight controller never sees the number, which is
+// the design.
 parameter landing_height is 50.
 parameter speed_handoff is 5.
 parameter f_max is 0.85.
@@ -85,16 +83,14 @@ local v_frac is 0.02.
 // so nothing the flight inherits is priced coarse.
 local search_scale is 4.
 
-// Under-relaxation for the search. A coarse march steepens the fixed-point
-// map — at scale 4 its slope near the answer runs about -1, so the raw
-// iteration overshoots and oscillates instead of settling. Damping the update
-// toward the marched answer, x <- x + step*(M(x) - x), pulls the effective
-// slope to (1-step) + step*M', near zero at step 0.5 and M' ~ -1. But a full
-// step is right while the move keeps its sign — that is healthy contraction,
-// and damping it only adds passes — so the loop takes full steps until the
-// move reverses and applies relax only then, on the overshoot the coarse map
-// creates. The search converges to the coarse map's own fixed point; the
-// scale-1 placement loop refines that to flight fidelity.
+// Under-relaxation for the fixed point. Each pass's marched reach carries
+// the throttle solve's tolerance as noise — dX/df runs near -X/f, so an
+// eps of throttle is a hundred metres or more of reach — which rules out
+// slope-estimating accelerators: a secant through two noisy passes aims
+// anywhere (measured: it scattered the iterate across tens of kilometres).
+// The iteration is the map's own step, damped only when the move reverses
+// sign — the overshoot the coarse march creates — which contracts through
+// the noise instead of amplifying it.
 local relax is 0.5.
 local search_budget is 12.
 
@@ -127,7 +123,9 @@ set config:ipu to 2000.
 // is ours to remove, so the ship is left exactly as found.
 function plan_abort {
   parameter why.
-  until not hasnode { remove nextnode. }
+  // wait 0 lets hasnode see the removal: it is stale within the physics
+  // tick, and a second remove on an empty list throws, crashing the abort.
+  until not hasnode { remove nextnode. wait 0. }
   set config:ipu to ipu_prior.
   print "ABORT: " + why.
   print "Nothing has been committed: no node remains, nothing has burned.".
@@ -158,14 +156,16 @@ print "gamma " + round(gamma, 2) + " deg; target " + round(target_lat, 4)
 local mdot_full is ship:availablethrust / (engine_isp() * constant:g0).
 
 // === THE ARC, DUPLICATED ===
-// integrate_arc is powered_descent_min.ks's endpoint, nearly verbatim: the
-// plan is only as good as its price, and the price is only right if the
-// planner marches exactly the arc the flight controller will fly. Two
-// departures: the seed is the candidate ellipse's periapsis instead of
-// the live ship, and the step tolerances take a scale so the search
-// loops can march coarse — at scale 1 the physics is the flight's,
-// verbatim. Until the two share a library, a change to either copy must
-// be made in both.
+// integrate_arc is the same Euler march as powered_descent_min.ks's
+// endpoint — the same rates, the same step rule — because the plan is
+// only as good as its price, and the price is only right if the planner
+// marches the arc the flight controller flies. The departures: the seed
+// is the candidate ellipse's periapsis instead of the live ship; the
+// march ends at speed_handoff instead of the attitude seam, because the
+// planner prices the whole braking descent where the flight controller
+// hands the seam's residual to terminal; and the step tolerances take a
+// scale so the search loops can march coarse. Until the two share a
+// library, a change to the step physics must be made in both.
 
 function integrate_arc {
   parameter f.                    // throttle, as a fraction of full thrust
@@ -223,17 +223,17 @@ function integrate_arc {
                  "speed", speed, "v0", v0).
 }
 
-// The one throttle whose arc bottoms out at the handoff altitude, found by
-// bisection: the candidate ellipse fixes PDI, so how hard the engine
-// pushes is the only free variable, and the ending height rises
-// monotonically with it. The same march the flight controller bisects on
-// down-range, bisected here on altitude, because the planner's question is
-// where the arc bottoms, not where it lands.
+// The one throttle whose arc bottoms out at the handoff altitude: the
+// candidate ellipse fixes PDI, so how hard the engine pushes is the only
+// free variable, and the ending height rises monotonically with it. The
+// same march the flight controller solves on down-range, solved here on
+// altitude, because the planner's question is where the arc bottoms, not
+// where it lands.
 function solve_throttle {
   parameter orbit_ is ship:orbit.
   parameter f_seed is -1.   // the previous pass's answer, if there was one:
                             // the solve barely moves between passes, so a
-                            // narrow bracket around it saves most halvings
+                            // bracket beside it saves most marches
   parameter scale_ is 1.    // step scale, handed through to the march
 
   // Where the arc bottoms out, relative to where it should: negative when
@@ -252,36 +252,65 @@ function solve_throttle {
     }
     return arc["h"] - h_handoff.
   }.
-  // The bisection, priced in marches — each endpoint probe and each
-  // halving costs a full arc march, which is why this does not call the
-  // library bisect (it marches both endpoints to check a bracket this
-  // function already knows). miss(0) is negative by construction: no
-  // thrust runs the march into the terrain or its step cap, both reported
-  // short. So the low end is never marched, and the ceiling is marched
-  // only when no seed bracket holds — where miss(f_max) <= 0 is the real
-  // failure, no throttle up to f_max flying the ellipse down, returned as
-  // -1 for the caller. A seed shrinks the bracket to the 40% window
-  // around the old answer when the window's signs hold; when they do not,
-  // the two probes still tighten one end. The tolerance is f_max/128,
-  // ~7e-3 of full scale: the flight's own re-solve bisects to 0.001 from
-  // true state, so the planner has no reason to out-resolve it.
-  local eps is f_max / 1024.
+  // The search, priced in marches — every probe costs a full arc march.
+  // The returned throttle is always an end of a sign-checked bracket
+  // whose miss is positive: its arc bottoms at or above the handoff, so
+  // the closure check downstream holds by construction. The miss is too
+  // lopsided for an unbracketed root-follower — below the root it
+  // saturates near -landing_height while above it climbs steeply, so a
+  // secant settles on the low side and hands back an arc that grounds
+  // out.
+  //
+  // Seeded — every pass after the first — the root barely moves, so a
+  // 10% window beside the old answer brackets it in two marches, and
+  // false position closes the bracket in two or three more, the
+  // interpolant cut in half each time the saturated low side repeats so
+  // it cannot stall there. A window that misses the root still tightens
+  // one end of the bracket below. Unseeded, bisection from the full
+  // bracket: miss(0) is negative by construction — no thrust runs the
+  // march into the terrain or its step cap, both reported short — so
+  // only the ceiling is probed, and miss(f_max) <= 0 is the real
+  // failure, no throttle up to f_max flying the ellipse down, returned
+  // as -1 for the caller. The
+  // tolerance is f_max/256, ~4e-3 of full scale: the flight's own
+  // re-solve bisects to 0.001 from true state, so the planner has no
+  // reason to out-resolve it.
+  local eps is f_max / 256.
   local lo is 0.
   local hi is -1.
   if f_seed > 0 {
-    local lo_try is 0.8 * f_seed.
-    local hi_try is min(f_max, 1.2 * f_seed).
-    if miss(lo_try) < 0 {
-      if miss(hi_try) > 0 {
-        set lo to lo_try.
-        set hi to hi_try.
-      } else if hi_try >= f_max {
-        return -1.      // the window's top was already the ceiling
-      } else {
-        set lo to hi_try.
-      }
+    local lo_s is 0.95 * f_seed.
+    local hi_s is min(f_max, 1.05 * f_seed).
+    local m_lo is miss(lo_s).
+    if m_lo >= 0 {
+      set hi to lo_s.        // the root sits below the window
     } else {
-      set hi to lo_try.
+      local m_hi is miss(hi_s).
+      if m_hi > 0 {
+        local iters is 0.
+        until hi_s - lo_s < eps or iters >= 8 {
+          // The interpolant is trusted only between two real misses: a
+          // sentinel at the low end, or a point pinned to an end of the
+          // bracket, halves the bracket instead.
+          local c is hi_s - m_hi * (hi_s - lo_s) / (m_hi - m_lo).
+          if c <= lo_s or c >= hi_s or m_lo < -1e8 {
+            set c to (lo_s + hi_s) / 2.
+          }
+          local m_c is miss(c).
+          if m_c > 0 {
+            set hi_s to c.
+            set m_hi to m_c.
+          } else {
+            set lo_s to c.
+            set m_lo to m_c.
+            set m_hi to m_hi / 2.
+          }
+          set iters to iters + 1.
+        }
+        return hi_s.
+      }
+      if hi_s >= f_max { return -1. }   // the window's top was the ceiling
+      set lo to hi_s.      // the root sits above the window
     }
   }
   if hi < 0 {
@@ -292,7 +321,7 @@ function solve_throttle {
     local c is (lo + hi) / 2.
     if miss(c) > 0 { set hi to c. } else { set lo to c. }
   }
-  return (lo + hi) / 2.
+  return hi.
 }
 
 // The price of an arc by the rocket equation, at today's mass — the few
@@ -380,21 +409,22 @@ function place_node {
                  "want", desired_lng, "err", error, "attempts", attempts).
 }
 
+// The plan a given reach implies: PDI sits on the gamma ray, X tan(gamma)
+// above the handoff, and the lead is X as an angle at the body's centre —
+// the placement that puts the arc's endpoint at the site.
+function plan_from_reach {
+  parameter x_, gamma_.
+  return lexicon("h_pdi", h_handoff + x_ * tan(gamma_),
+                 "lead", x_ / body:radius * constant:radtodeg).
+}
+
 // === THE FIXED POINT ===
 // h_pdi = h_handoff + X tan(gamma), where X — the ground the arc covers —
 // itself depends on the ellipse h_pdi implies: a one-dimensional fixed
-// point, solved by iteration. Each pass prices the arc on a candidate
-// ellipse and rebuilds h_pdi from the X it reads. The update is contracted
-// by tan(gamma) times dX/dh_pdi, small for any shallow approach, so it
-// settles in a few passes. Settling means h_pdi stopped moving at the
-// metre scale: executing the burn will move the realized periapsis by
-// metres anyway, so a plan converged tighter than the burn can deliver
-// buys nothing.
-//
-// One tier, at flight fidelity: the adaptive march is cheap enough that
-// every pass prices exactly the arc the ship will fly, so the coarse
-// tier that used to hand this loop a starting point priced nothing worth
-// keeping. The fixed point places its candidate nodes with plan_node's
+// point, solved by damped iteration. Each pass prices the arc on a
+// candidate ellipse and rebuilds h_pdi from the X it reads; the update is
+// contracted by tan(gamma) times dX/dh_pdi, small for any shallow
+// approach. The fixed point places its candidate nodes with plan_node's
 // equatorial shortcut; the placement passes that follow correct what the
 // shortcut books. It is a function that reports failure instead of
 // aborting because the sweep below runs it at slopes the human did not
@@ -415,8 +445,9 @@ function fixed_point {
   local v_seed is sqrt(body:mu * (2 / r_seed - 1 / sma_seed))
                 - 2 * constant:pi * r_seed / body:rotationperiod.
   local x_seed is v_seed ^ 2 / (2 * f_max * a_max).
-  local h_pdi_ is h_handoff + x_seed * tan(gamma_).
-  local lead_ is x_seed / body:radius * constant:radtodeg.
+  local seed_plan is plan_from_reach(x_seed, gamma_).
+  local h_pdi_ is seed_plan["h_pdi"].
+  local lead_ is seed_plan["lead"].
 
   local iters is 0.
   local x_ is x_seed.
@@ -463,16 +494,17 @@ function fixed_point {
     set dv_doi_ to nd:deltav:mag.
     remove nd.
 
+    // Full step while the move keeps its sign; damp when it reverses,
+    // which is the coarse map overshooting its fixed point. dx carries
+    // the raw move for the convergence test either way.
     local dx_new is arc["x"] - x_.
-    // Full step while the move keeps its sign; damp when it reverses, which is
-    // the coarse map overshooting its fixed point. dx carries the raw move for
-    // the convergence test either way.
     local step is choose relax if dx_new * dx < 0 else 1.
     set dx to dx_new.
     set x_ to x_ + step * dx_new.
     set t_ to arc["t"].
-    set h_pdi_ to h_handoff + x_ * tan(gamma_).
-    set lead_ to x_ / body:radius * constant:radtodeg.
+    local next_plan is plan_from_reach(x_, gamma_).
+    set h_pdi_ to next_plan["h_pdi"].
+    set lead_ to next_plan["lead"].
     set iters to iters + 1.
     if verbose_ {
       print "pass " + iters + ": h_pdi " + round(h_pdi_) + " m  X "
@@ -506,11 +538,11 @@ for mult in sweep_mults {
     if mult <> 1 { set r_ to fixed_point(g_try). }
     local line is "".
     if r_["ok"] {
+      local dv_a is arc_dv(r_["f"], r_["t"]).
       set line to "# gamma " + round(g_try, 2) + " deg: dv "
-          + round(r_["dv_doi"] + arc_dv(r_["f"], r_["t"]), 1) + " m/s (doi "
-          + round(r_["dv_doi"], 1) + " + arc "
-          + round(arc_dv(r_["f"], r_["t"]), 1) + ")  f " + round(r_["f"], 3)
-          + "  X " + round(r_["x"] / 1000, 1) + " km"
+          + round(r_["dv_doi"] + dv_a, 1) + " m/s (doi "
+          + round(r_["dv_doi"], 1) + " + arc " + round(dv_a, 1) + ")  f "
+          + round(r_["f"], 3) + "  X " + round(r_["x"] / 1000, 1) + " km"
           + (choose "  <- planned" if mult = 1 else "").
     } else {
       set line to "# gamma " + round(g_try, 2) + " deg: no plan ("
@@ -529,7 +561,9 @@ for mult in sweep_mults {
 // Both seeds come from the fixed point: the throttle warm-starts each
 // placement solve, and the reach measures pass 1's move off the shortcut.
 // The placement's marches run at scale 1 — flight fidelity — because this
-// loop's answer is the plan.
+// loop's answer is the plan. The throttle solve included: a coarse-solved f
+// is biased low by more than landing_height's altitude slop, and its
+// flight-fidelity arc flies into the ground with speed remaining.
 local f is fp["f"].
 // Seed the reach from the fixed point's answer (h_pdi = h_handoff + x*tan gamma),
 // so pass 1's move measures how far the real placement shifts the reach off the
@@ -561,12 +595,11 @@ until converged {
   set x_arc to arc["x"].
   set t_arc to arc["t"].
   set v_pdi to arc["v0"].
-  local h_new is h_handoff + x_arc * tan(gamma).
-  // The lead places the endpoint AT the site. The flight controller's
-  // re-solve corrects both signs of error, so nothing is bought by
-  // arriving long — the old allowance would only hold the flown throttle
-  // above the solved one for the whole burn.
-  local lead_new is x_arc / body:radius * constant:radtodeg.
+  // The lead places the endpoint at the site: the flight controller's
+  // re-solve corrects both signs of error.
+  local new_plan is plan_from_reach(x_arc, gamma).
+  local h_new is new_plan["h_pdi"].
+  local lead_new is new_plan["lead"].
   set place_passes to place_passes + 1.
   print "placement " + place_passes + ": h_pdi " + round(h_new) + " m  X "
       + round(x_arc / 1000, 1) + " km  f " + round(f, 4) + ".".
@@ -607,42 +640,72 @@ if nd:eta < burn_duration(nd:deltav:mag) / 2 + 60 {
 // === THE COAST ===
 // The one stretch the gamma ray never certifies: between the DOI burn
 // and PDI the ship rides the ellipse over terrain the plan has so far
-// only assumed away — and it binds for real: measured over the Great
-// Flats, the coast's clearance beat PDI's by ten metres, on the
-// flattest ground the body owns. The check is nearly exact, because the
-// coast is on rails and kOS terrain is the game's own ground: walk the
-// placed ellipse from the burn to PDI, keep the minimum of altitude
-// over terrain, refuse the plan if it comes under coast_clearance. No
-// early-out cleverness — half an orbit of samples is cheap at this
-// IPU. The step is anchored to ground metres at periapsis speed, where
-// the coast is lowest and fastest, so it is an accuracy bound like
-// pitch_tol, not a craft or body number.
+// only assumed away — and it binds for real: over the flattest ground on
+// the body, the coast's clearance has measured within metres of PDI's.
+// The check is nearly exact, because the coast is on rails and kOS
+// terrain is the game's own ground: walk the placed ellipse from the
+// burn to PDI, keep the minimum of altitude over terrain, refuse the
+// plan if it comes under coast_clearance. The walk runs in true anomaly,
+// where every quantity is closed-form: radius from the conic equation,
+// time from Kepler's equation run forward — anomaly to time needs no
+// iteration; only the reverse does — and the footprint from the orbit's
+// elements and the body's rotation. The step is anchored to ground
+// metres, so it is an accuracy bound like pitch_tol, not a craft or
+// body number.
 local coast_dx is 200.
 local t_node is timestamp(nd:time).
 local t_pdi is placed["t_pdi"].
-local dt_c is coast_dx / orbital_speed(nd:orbit:periapsis, nd:orbit).
-local cc_samples is floor((t_pdi:seconds - t_node:seconds) / dt_c).
-print "Walking the coast: " + cc_samples + " samples.".
+print "Walking the coast.".
+
+// The ellipse's shape and frame, hoisted: inside the loop the walk is
+// trig and one terrain read per sample. The body's rotation angle is
+// taken once at PDI and rolled back at the body's rate.
+local ecc_c is nd:orbit:eccentricity.
+local p_c is nd:orbit:semimajoraxis * (1 - ecc_c ^ 2).
+local lan_c is nd:orbit:longitudeofascendingnode.
+local aop_c is nd:orbit:argumentofperiapsis.
+local inc_c is nd:orbit:inclination.
+local period_c is nd:orbit:period.
+local rot_pdi is body_rotation(t_pdi, nd:orbit).
+local rot_rate is 360 / body:rotationperiod.
+local sq_lo is sqrt(1 - ecc_c).
+local sq_hi is sqrt(1 + ecc_c).
+local r_body_c is body:radius.
+local r2d_c is constant:radtodeg.
 
 local cc_min is 1e12.
-local cc_dt is 0.      // seconds before PDI — open item 1's own coordinate
+local cc_dt is 0.      // seconds before PDI, where the minimum sits
 local cc_alt is 0.
 local cc_terr is 0.
 local cc_lng is 0.
-local i is 0.
-until t_pdi:seconds - i * dt_c < t_node:seconds {
-  local t_i is timestamp(t_pdi:seconds - i * dt_c).
-  local st is orbit_at(t_i, nd:orbit).
-  local alt_i is st["position"]:mag - body:radius.
-  local geo is geoposition_at(t_i, nd:orbit, st["position"]).
-  if alt_i - geo:terrainheight < cc_min {
-    set cc_min to alt_i - geo:terrainheight.
-    set cc_dt to i * dt_c.
+local cc_samples is 0.
+local nu is true_anomaly(t_node, nd:orbit).
+until nu >= 360 {
+  local r_ is p_c / (1 + ecc_c * cos(nu)).
+  // True anomaly to eccentric to mean; the mean anomaly left to 360 is
+  // the fraction of the period left to coast before PDI.
+  local ea is 2 * arctan2(sq_lo * sin(nu / 2), sq_hi * cos(nu / 2)).
+  if ea < 0 { set ea to ea + 360. }
+  local ma is ea - ecc_c * sin(ea) * r2d_c.
+  local dt_ is (360 - ma) / 360 * period_c.
+  // The footprint: latitude is the inclination's projection at this
+  // argument of latitude; longitude follows kepler's body_longitude
+  // convention, the body having rotated dt_ less than it will have at
+  // PDI.
+  local lat_i is arcsin(sin(inc_c) * sin(aop_c + nu)).
+  local lng_i is wrap_longitude(lan_c + aop_c + nu
+                                - (rot_pdi - rot_rate * dt_)).
+  local terr is body:geopositionlatlng(lat_i, lng_i):terrainheight.
+  local alt_i is r_ - r_body_c.
+  if alt_i - terr < cc_min {
+    set cc_min to alt_i - terr.
+    set cc_dt to dt_.
     set cc_alt to alt_i.
-    set cc_terr to geo:terrainheight.
-    set cc_lng to geo:lng.
+    set cc_terr to terr.
+    set cc_lng to lng_i.
   }
-  set i to i + 1.
+  set cc_samples to cc_samples + 1.
+  set nu to nu + coast_dx / r_ * r2d_c.
 }
 if cc_min < coast_clearance {
   plan_abort("the coast dips to " + round(cc_min) + " m over the terrain "
