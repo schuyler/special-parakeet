@@ -54,11 +54,6 @@ print "=== OPTIMIZE DESCENT ANGLE ===".
 // kepler for wrap_longitude; the survey needs nothing else from the stack.
 run "../core/kepler".
 
-// The tallest terrain anywhere on the body, metres above the datum — the
-// one fact this script cannot read: kOS reports terrain per coordinate
-// and has no body-wide maximum (Minmus peaks near 5725 m). It bounds the
-// walk: once the ray tops it, nothing beyond can matter.
-parameter max_terrain_height.
 parameter target_lat is 0.
 parameter target_lng is 0.
 // The seam with plan_doi: the ray is anchored landing_height above the
@@ -68,16 +63,19 @@ parameter target_lng is 0.
 parameter landing_height is 50.
 // How far the terrain model is trusted, metres: every sample is treated
 // as this much taller than kOS reports. At the forcing obstacle the ray's
-// clearance is exactly this number — and the flown arc's concavity bonus
+// clearance is exactly this number — the flown arc's concavity bonus
 // above the ray, real elsewhere, goes to zero as the obstacle nears the
-// site — so this is the whole of the margin there, not a topping-up of
-// some other one.
-parameter terrain_margin is 50.
+// site — so this is the whole of the margin there. Defaults to
+// landing_height: up-range terrain gets the same benefit of the doubt as
+// the clearance granted at the site — one judgment, not two — until the
+// model earns a number of its own.
+parameter terrain_margin is landing_height.
 // The shallowest approach worth flying regardless of how flat the survey
-// reads, degrees. Terrain that demands less than this — the Great Flats
-// demand nothing at all — gets this instead: plan_doi needs some slope to
-// price, and a ray indistinguishable from level trusts the terrain model
-// over hundreds of kilometres.
+// reads, degrees. The floor is the unwritten coast rule's understudy: a
+// near-level ray puts PDI barely above the handoff altitude and lays the
+// coast along the ground for the length of the approach, which no
+// clearance walk would pass. Some slope must be chosen for plan_doi to
+// price; over the Great Flats, which demand nothing, this is it.
 parameter gamma_floor is 1.
 // Sample spacing, metres — the design note's open item 8: IPU budget
 // against stepping over a spire.
@@ -113,11 +111,6 @@ if gamma_floor <= 0 or gamma_floor >= 90 {
   survey_abort("gamma_floor is " + gamma_floor + "; it is a descent slope"
       + " in degrees and must lie strictly between 0 and 90.").
 }
-if max_terrain_height <= tgt:terrainheight {
-  survey_abort("max_terrain_height is " + round(max_terrain_height)
-      + " m but the site's own terrain is " + round(tgt:terrainheight)
-      + " m; the body's peak cannot sit below the site.").
-}
 
 print "target " + round(target_lat, 4) + " " + round(target_lng, 4)
     + ", terrain " + round(tgt:terrainheight) + " m; ray anchored "
@@ -131,17 +124,26 @@ if abs(target_lat) > 5 {
 // Metres of ground per degree of longitude along the site's parallel.
 local m_per_deg is body:radius * cos(target_lat) * constant:degtorad.
 
-// The walk's far bound: a quarter of the body. Past 90 degrees of arc,
-// "up-range along the approach" has stopped meaning anything a straight
-// ray can certify, and on a small body a shallow floor would otherwise
-// walk most of the way around — the one-degree ray tops Minmus 330 km
-// out, most of its circumference. Terrain beyond the cap is the coast
-// rule's problem, and hitting the cap is reported, not hidden.
+// The walk's span: a quarter of the body, always. The straight ray cannot
+// claim more — past 90 degrees of arc, "up-range along the approach" has
+// stopped meaning anything it can certify — and it does not need to: a
+// plausible PDI sits tens of kilometres up-range, and terrain past PDI is
+// under the coast, whose rule this survey does not own. A body-wide
+// terrain maximum could end the walk sooner, but kOS holds no such
+// number, and on the bodies flown so far the quarter-body bound binds
+// first anyway — a one-degree ray does not top Minmus's 5725 m peak until
+// ~330 km out, most of the way around. So the span is derived, not
+// supplied, and the price is a few thousand cheap samples.
 local x_cap is constant:pi * body:radius / 2.
 if x_cap / dx > 100000 {
   survey_abort("dx " + dx + " m means " + round(x_cap / dx) + " samples"
-      + " to the quarter-body cap; raise dx.").
+      + " to the quarter-body span; raise dx.").
 }
+
+// Reporting strides, derived from the span: about fifty profile lines
+// and a handful of progress notes on any body.
+local prof_step is max(dx, x_cap / 50).
+local note_step is x_cap / 5.
 
 local x is 0.
 local g_run is 0.          // the steepest demand seen so far, degrees
@@ -149,14 +151,12 @@ local force_x is 0.        // where it was seen; 0 means nothing demanded
 local force_h is 0.
 local force_lng is 0.
 local samples is 0.
-local ray_closed is false. // true: the ray topped the peak inside the cap
 local profile is list().   // decimated (x, terrain) pairs for the log
 local next_prof is 0.
-local next_note is 20000.
+local next_note is note_step.
 
-until false {
+until x + dx > x_cap {
   set x to x + dx.
-  if x > x_cap { break. }
   local lng_i is wrap_longitude(target_lng - x / m_per_deg).
   local terr is body:geopositionlatlng(target_lat, lng_i):terrainheight.
   set samples to samples + 1.
@@ -169,23 +169,12 @@ until false {
   }
   if x >= next_prof {
     profile:add(list(x, terr)).
-    set next_prof to next_prof + 2000.
+    set next_prof to next_prof + prof_step.
   }
   if x >= next_note {
     print "  swept " + round(x / 1000) + " km; demand so far "
         + round(g_run, 2) + " deg.".
-    set next_note to next_note + 20000.
-  }
-  // The walk ends itself: the ray, at the steeper of the running answer
-  // and the floor, has climbed past the tallest terrain the body owns
-  // (plus the same distrust every sample gets), so no obstacle beyond
-  // can demand more — whatever stands out there tops out at
-  // max_terrain_height, and the slope that reaches a bounded height
-  // falls as 1/x.
-  if h_handoff + x * tan(max(g_run, gamma_floor))
-      > max_terrain_height + terrain_margin {
-    set ray_closed to true.
-    break.
+    set next_note to next_note + note_step.
   }
 }
 
@@ -209,30 +198,22 @@ report("# gamma " + round(gamma, 2) + " deg  target "
     + round(tgt:terrainheight) + " m").
 report("# anchor " + round(h_handoff) + " m (landing_height "
     + landing_height + ")  margin " + terrain_margin + " m  floor "
-    + gamma_floor + " deg  dx " + dx + " m  peak "
-    + round(max_terrain_height) + " m").
+    + gamma_floor + " deg  dx " + dx + " m").
 if g_run >= gamma_floor {
   report("# bound: terrain — " + round(force_h) + " m at lng "
       + round(force_lng, 4) + ", " + round(force_x / 1000, 1)
       + " km up-range").
-} else if force_x > 0 {
-  report("# bound: gamma_floor — the steepest terrain demand was only "
-      + round(g_run, 2) + " deg (" + round(force_h) + " m at "
-      + round(force_x / 1000, 1) + " km)").
 } else {
-  report("# bound: gamma_floor — no terrain on the walk rose above the"
-      + " anchor at all").
+  report("# bound: gamma_floor — "
+      + (choose "the steepest terrain demand was only "
+             + round(g_run, 2) + " deg (" + round(force_h) + " m at "
+             + round(force_x / 1000, 1) + " km)"
+         if force_x > 0
+         else "no terrain on the walk rose above the anchor at all")).
 }
 report("# walk " + samples + " samples over " + round(x / 1000, 1)
-    + " km, " + (choose "closed: the ray topped the peak" if ray_closed
-                 else "CAPPED at a quarter of the body")).
-if not ray_closed {
-  print "NOTE: the walk hit the quarter-body cap with the ray still below"
-      + " the peak — routine on a shallow slope over a small body."
-      + " Terrain beyond " + round(x / 1000) + " km is uncertified here;"
-      + " it lies far up-range of any plausible PDI, under the coast,"
-      + " whose clearance rule this survey does not own.".
-}
+    + " km — a quarter of the body; terrain beyond is coast country,"
+    + " not this survey's to certify").
 if gamma > 30 {
   print "WARNING: gamma " + round(gamma, 1) + " deg is not an approach"
       + " corridor, it is a wall next to the site. Move the site rather"

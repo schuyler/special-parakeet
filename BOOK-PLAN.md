@@ -319,16 +319,22 @@ speculation, not planning.
   clearance rule (open item 1) is explicitly NOT here — it is a property of the placed
   ellipse, so it belongs in plan_doi's verdict (walking `nd:orbit` before declaring
   victory), which is where it should land next; until then the coast is still the human's
-  risk, and the script's header says so. Parameters: `max_terrain_height` (the one body
-  fact kOS cannot read — no default; Minmus ≈ 5725 m), `terrain_margin` (how far the
-  terrain model is trusted, ray-side twin of open item 1's number), `gamma_floor` (1°, the
-  shallowest approach flown regardless of how flat the survey reads), `dx` (open item 8's
-  knob, 100 m). The walk self-terminates once the ray tops the peak, capped at a quarter
-  of the body — the cap is routine on the Minmus flats (a 1° ray tops the peak ~330 km
-  out) and is reported as coast country, not hidden. Witness: `gamma_survey.log` — gamma,
-  the forcing obstacle, walk stats, and a decimated corridor profile (x, terrain, ray) for
-  plotting. **Unflown** — but unlike the flight scripts it is dry-runnable: it only reads
-  terrain, so a bridge run from any save on or around Minmus exercises it end to end.
+  risk, and the script's header says so. Simplified the same session on a
+  derive-don't-supply review: `max_terrain_height` deleted — its only job was ending the
+  walk early, and the quarter-body span bound first on every body flown anyway (a 1° ray
+  doesn't top Minmus's 5725 m until ~330 km out, most of the way around), so the walk just
+  spans a derived quarter of the body and every parameter now has a default;
+  `terrain_margin` now defaults to `landing_height` (the same benefit of the doubt at the
+  site and up-range — one judgment, not two); reporting strides derived from the span
+  (~50 profile lines, ~5 progress notes on any body). Remaining judgments, each argued in
+  place: `gamma_floor` (1°, named for what it is — the unwritten coast rule's understudy)
+  and `dx` (open item 8's knob, 100 m); `landing_height` stays because it is the seam.
+  One kOS idiom to confirm on the first bridge run: `parameter terrain_margin is
+  landing_height.` — a later parameter's default reading an earlier one. Witness:
+  `gamma_survey.log` — gamma, the forcing obstacle, walk stats, and a decimated corridor
+  profile (x, terrain, ray) for plotting. **Unflown** — but unlike the flight scripts it
+  is dry-runnable: it only reads terrain, so a bridge run from any save on or around
+  Minmus exercises it end to end.
 
 - **Done (2026-07-19):** `reference/original/plan_doi.ks` revised in place to plan for
   `powered_descent_min.ks` instead of the table-flying controller. **Flight news first**:
