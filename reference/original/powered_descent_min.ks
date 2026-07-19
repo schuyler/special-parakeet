@@ -68,9 +68,10 @@ local v_frac is 0.02.
 // v_frac of itself. Both track the dynamics, so the step refines where the
 // path bends over and never depends on thrust — a weak engine no longer
 // stretches the step until Euler's method diverges. The arc ends when speed
-// is spent or when it reaches the ground (h <= 0); a throttle too weak to stop
-// runs into the surface, and its reach there is a real undershoot, not garbage
-// from integrating on below the ground. The step cap is a non-convergence guard.
+// is spent or when it reaches the ground (h <= tgt:terrainheight — the site's
+// surface, not the datum); a throttle too weak to stop runs into the surface,
+// and its reach there is a real undershoot, not garbage from integrating on
+// below the ground. The step cap is a non-convergence guard.
 function endpoint {
   parameter f.
   local speed is ship:velocity:surface:mag.
@@ -80,7 +81,7 @@ function endpoint {
   local theta is 0.                // ground angle swept, radians
   local t is 0.
   local steps is 0.
-  until speed <= speed_handoff or h <= 0 or steps >= 4000 {
+  until speed <= speed_handoff or h <= tgt:terrainheight or steps >= 4000 {
     local r_ is body:radius + h.
     local g is body:mu / r_ ^ 2.
     local turn is abs(speed / r_ - g / speed).
