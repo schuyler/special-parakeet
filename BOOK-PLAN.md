@@ -332,6 +332,18 @@ speculation, not planning.
   the log can't tell which happened), and `bisect`'s failure path prints four lines that
   would tear the fixed-row readout mid-burn.
 
+- **Done (2026-07-18):** `notes/level-flight-fuel-optimization.md` — design note for a
+  cruise optimizer atop the `autopilot` branch's cascade: a sixth, outermost loop that
+  chooses the altitude/airspeed setpoints by minimizing measured fuel-per-metre
+  (J = ṁ/v, primary measurement is the ship's own mass delta over ~30 s windows;
+  `drag_vector()`-based D/v kept as cross-check only until its signs are validated).
+  Key decisions: step-and-compare (twiddle) rendition first, sinusoidal extremum seeking
+  only if needed; trim-gated measurement windows with turns suspended; converged trim
+  throttle as the interior-vs-boundary-optimum diagnostic (throttle < 1 ⇒ the Mach drag
+  rise picked the altitude; throttle pegged ⇒ the engine did). Companion to
+  `ssto-aero-optimization.md` (same technique, ascent phase). Feeds the Part V/VI seam
+  (ch. 16 payoff exercise). Analysis only — no code, unflown.
+
 - **Done (2026-07-18):** `notes/powered-descent-invariants.md` + `reference/original/
   powered_descent_live.ks` — the descent's invariants worked out with Schuyler, and the
   rendition they imply. The note establishes that the retrograde hold makes the braking
