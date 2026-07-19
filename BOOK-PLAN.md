@@ -347,8 +347,9 @@ speculation, not planning.
   (~50 profile lines, ~5 progress notes on any body). Remaining judgments, each argued in
   place: `gamma_floor` (1°, named for what it is — the unwritten coast rule's understudy)
   and `dx` (open item 8's knob, 100 m); `landing_height` stays because it is the seam.
-  One kOS idiom to confirm on the first bridge run: `parameter terrain_margin is
-  landing_height.` — a later parameter's default reading an earlier one. Witness:
+  (Both this default and plan_doi's `coast_clearance` resolve negative-means-`landing_height`
+  in code rather than by a cross-parameter default expression — an idiom this repo has never
+  proven in kOS, and no night before a flight is the time to prove it.) Witness:
   `gamma_survey.log` — gamma, the forcing obstacle, walk stats, and a decimated corridor
   profile (x, terrain, ray) for plotting. **Unflown** — but unlike the flight scripts it
   is dry-runnable: it only reads terrain, so a bridge run from any save on or around

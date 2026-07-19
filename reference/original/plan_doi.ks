@@ -59,10 +59,12 @@ parameter speed_handoff is 5.
 parameter f_max is 0.85.
 // The coast's clearance floor, metres: the walk below the placement
 // passes refuses the plan if the ellipse ever comes closer than this to
-// the terrain between the DOI burn and PDI. Defaults to landing_height —
-// the same benefit of the doubt the descent grants terrain everywhere
-// else.
-parameter coast_clearance is landing_height.
+// the terrain between the DOI burn and PDI. Any negative (the default)
+// means landing_height — the same benefit of the doubt the descent
+// grants terrain everywhere else — resolved in code below rather than
+// by a cross-parameter default expression.
+parameter coast_clearance is -1.
+if coast_clearance < 0 { set coast_clearance to landing_height. }
 
 // The march's accuracy bounds — twins of the locals in
 // powered_descent_min.ks, and locals here for the same reason they are
@@ -527,8 +529,10 @@ if cc_min < coast_clearance {
   plan_abort("the coast dips to " + round(cc_min) + " m over the terrain "
       + round(cc_dt) + " s before PDI (ellipse " + round(cc_alt)
       + " m, terrain " + round(cc_terr) + " m, lng " + round(cc_lng, 2)
-      + "); the floor is " + coast_clearance + " m. Steepen gamma or"
-      + " move the site.").
+      + "); the floor is " + coast_clearance + " m. If the dip is near"
+      + " PDI, steepen gamma or move the site; if it sits well up-range"
+      + " toward the burn, the parking orbit itself is too low for this"
+      + " terrain.").
 }
 
 // === THE VERDICT ===

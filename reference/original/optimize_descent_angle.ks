@@ -66,11 +66,12 @@ parameter landing_height is 50.
 // as this much taller than kOS reports. At the forcing obstacle the ray's
 // clearance is exactly this number — the flown arc's concavity bonus
 // above the ray, real elsewhere, goes to zero as the obstacle nears the
-// site — so this is the whole of the margin there. Defaults to
-// landing_height: up-range terrain gets the same benefit of the doubt as
-// the clearance granted at the site — one judgment, not two — until the
-// model earns a number of its own.
-parameter terrain_margin is landing_height.
+// site — so this is the whole of the margin there. Any negative (the
+// default) means landing_height: up-range terrain gets the same benefit
+// of the doubt as the clearance granted at the site — one judgment, not
+// two — until the model earns a number of its own. Resolved in code
+// below rather than by a cross-parameter default expression.
+parameter terrain_margin is -1.
 // The shallowest approach worth flying regardless of how flat the survey
 // reads, degrees. A near-level ray puts PDI barely above the handoff
 // altitude and lays the coast along the ground for the length of the
@@ -83,6 +84,8 @@ parameter gamma_floor is 1.
 // Sample spacing, metres — the design note's open item 8: IPU budget
 // against stepping over a spire.
 parameter dx is 100.
+
+if terrain_margin < 0 { set terrain_margin to landing_height. }
 
 local tgt is body:geopositionlatlng(target_lat, target_lng).
 local h_handoff is tgt:terrainheight + landing_height.
@@ -106,10 +109,6 @@ if dx <= 0 {
   survey_abort("dx is " + dx + "; the survey cannot walk a non-positive"
       + " step.").
 }
-if terrain_margin < 0 {
-  survey_abort("terrain_margin is " + terrain_margin + "; distrust of the"
-      + " terrain model cannot be negative.").
-}
 if gamma_floor <= 0 or gamma_floor >= 90 {
   survey_abort("gamma_floor is " + gamma_floor + "; it is a descent slope"
       + " in degrees and must lie strictly between 0 and 90.").
@@ -118,6 +117,11 @@ if gamma_floor <= 0 or gamma_floor >= 90 {
 print "target " + round(target_lat, 4) + " " + round(target_lng, 4)
     + ", terrain " + round(tgt:terrainheight) + " m; ray anchored "
     + landing_height + " m above it.".
+if abs(target_lat) >= 60 {
+  survey_abort("the site sits at latitude " + round(target_lat, 2)
+      + " deg; a prograde equatorial approach cannot reach it, and the"
+      + " parallel this survey walks would be fiction.").
+}
 if abs(target_lat) > 5 {
   print "WARNING: the site sits at latitude " + round(target_lat, 2)
       + " deg; the equatorial-track assumption this survey walks under is"
@@ -208,9 +212,9 @@ if g_run >= gamma_floor {
       + " km up-range").
 } else {
   report("# bound: gamma_floor — "
-      + (choose "the steepest terrain demand was only "
+      + (choose ("the steepest terrain demand was only "
              + round(g_run, 2) + " deg (" + round(force_h) + " m at "
-             + round(force_x / 1000, 1) + " km)"
+             + round(force_x / 1000, 1) + " km)")
          if force_x > 0
          else "no terrain on the walk rose above the anchor at all")).
 }
@@ -235,4 +239,4 @@ set config:ipu to ipu_prior.
 print "Survey done. Fly it: run plan_doi(" + round(gamma, 2) + ", "
     + target_lat + ", " + target_lng + ")."
     + (choose "" if landing_height = 50
-       else " Pass landing_height " + landing_height + " along too.").
+       else (" Pass landing_height " + landing_height + " along too.")).
