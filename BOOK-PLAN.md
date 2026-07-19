@@ -305,6 +305,31 @@ speculation, not planning.
 
 *Last updated: 2026-07-19*
 
+- **Done (2026-07-19, later):** `reference/original/optimize_descent_angle.ks` — piece 3's
+  front half, new. The terrain survey that stood behind gamma as "the human's judgment" in
+  `plan_doi.ks` now exists as code: walk the approach up-range from the site and take the
+  steepest ray any obstacle demands, `gamma = max arctan((terrain + margin − h_handoff)/x)`.
+  No search: Δv rises with gamma (the trend plan_doi's sweep prices), so the optimum is the
+  shallowest certified slope — "optimize" means "find the binding obstacle". Two scoping
+  decisions, both argued in the header: (1) the design note's survey-joins-the-fixed-point
+  coupling is deferred — it only bites on an inclined orbit, and under the stack's standing
+  equatorial assumption the track through the site is the site's own parallel, so the
+  survey is pure geography: reads nothing from the ship but the body, places no node, runs
+  before the parking orbit exists, and needs no third copy of the arc march. (2) The coast
+  clearance rule (open item 1) is explicitly NOT here — it is a property of the placed
+  ellipse, so it belongs in plan_doi's verdict (walking `nd:orbit` before declaring
+  victory), which is where it should land next; until then the coast is still the human's
+  risk, and the script's header says so. Parameters: `max_terrain_height` (the one body
+  fact kOS cannot read — no default; Minmus ≈ 5725 m), `terrain_margin` (how far the
+  terrain model is trusted, ray-side twin of open item 1's number), `gamma_floor` (1°, the
+  shallowest approach flown regardless of how flat the survey reads), `dx` (open item 8's
+  knob, 100 m). The walk self-terminates once the ray tops the peak, capped at a quarter
+  of the body — the cap is routine on the Minmus flats (a 1° ray tops the peak ~330 km
+  out) and is reported as coast country, not hidden. Witness: `gamma_survey.log` — gamma,
+  the forcing obstacle, walk stats, and a decimated corridor profile (x, terrain, ray) for
+  plotting. **Unflown** — but unlike the flight scripts it is dry-runnable: it only reads
+  terrain, so a bridge run from any save on or around Minmus exercises it end to end.
+
 - **Done (2026-07-19):** `reference/original/plan_doi.ks` revised in place to plan for
   `powered_descent_min.ks` instead of the table-flying controller. **Flight news first**:
   the min rendition has now flown — pinpoint Minmus landings at TWR ~37 and the same craft
