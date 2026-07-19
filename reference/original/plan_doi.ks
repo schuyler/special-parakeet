@@ -525,6 +525,23 @@ if f_max - f < 0.1 * f_max {
       + " little authority remains to shorten the arc.".
 }
 
+// Terminal's contract at the seam: its schedule must be able to arrest
+// the handoff speed inside the clearance, or the burn ignites already
+// behind schedule and spends the f_max..1 reserve at the worst moment.
+// The arrestable speed is sqrt(2 a_dec landing_height), a_dec being
+// f_max's deceleration net of surface gravity — at today's mass, so
+// slightly understated, and ignoring terminal's short h_pad coast, so
+// slightly overstated; the planner is the only program that holds both
+// numbers, which is why the check lives here and not in flight.
+local a_dec_plan is f_max * a_max - body:mu / body:radius ^ 2.
+local v_arrest is sqrt(2 * max(0, a_dec_plan) * landing_height).
+if speed_handoff > v_arrest {
+  print "WARNING: terminal ignites behind schedule at handoff — "
+      + round(speed_handoff, 1) + " m/s arrives, only "
+      + round(v_arrest, 1) + " m/s is arrestable in " + landing_height
+      + " m of clearance. Raise landing_height or lower speed_handoff.".
+}
+
 // The price of gamma: the node's burn plus the braking arc by the rocket
 // equation, at today's mass. Terminal descent is extra and roughly
 // constant.

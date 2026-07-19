@@ -344,8 +344,14 @@ speculation, not planning.
   (0.3 is revealed as Minmus's instance of exactly that — near-no-op there, real elsewhere)
   and yaw `tau = t_go/3` frozen at ignition (closure becomes e^-3 of the PDI offset by
   construction; the planner's verdict check updated to match, its residual warning now
-  reading "five percent of this offset is N m"). Next flight verifies both. Still on the
-  table: the planner-side `speed_handoff < sqrt(2·a_dec·landing_height)` schedule check.
+  reading "five percent of this offset is N m"). The schedule check landed too: the
+  planner's verdict now warns when terminal would ignite behind schedule at handoff
+  (`speed_handoff` vs `sqrt(2·a_dec·landing_height)` — the planner is the only program
+  holding both numbers, which is why the check lives there and not in flight). That closes
+  the parameter census; nothing from it remains unapplied. **Flight plan (Schuyler)**: next
+  session flies `powered_descent_min` first — verifying the derived `a_lat_max` (expect
+  free-fall `a_cmd` capping at ~0.28 in the log, otherwise identical) and the `t_go/3` yaw
+  law (watch the `cross` column's decay) — then the revised `plan_doi` end to end.
 
 - **Done (2026-07-18):** `notes/level-flight-fuel-optimization.md` — design note for a
   cruise optimizer atop the `autopilot` branch's cascade: a sixth, outermost loop that
