@@ -330,7 +330,19 @@ speculation, not planning.
   revised planner. Open items from the review of min itself (not acted on): the ignition
   fallback `f_cmd = f_max` conflates bisect's two bracket failures (safe either way, but
   the log can't tell which happened), and `bisect`'s failure path prints four lines that
-  would tear the fixed-row readout mid-burn.
+  would tear the fixed-row readout mid-burn. **Follow-up (same day)**, after a parameter
+  census with Schuyler: `f_min` retired from the arc contract — the solve brackets at zero
+  throttle in both files (a no-thrust arc runs into the terrain floor, a real undershoot, so
+  the bottom end needs no tuned floor); terminal keeps its 0.05 as `f_idle`, its own idle
+  threshold, not the solve's (note: `powered_descent_min`'s positional parameter list
+  shrank — `f_max` is now 4th). `plan_doi`'s coarse tier and `f_eps` also retired: one
+  fixed point at flight fidelity (the tiers were rent paid to the fixed-step integrator),
+  bisection tolerance derived from the bracket (`f_max/4096`), and the duplicated march
+  synced to min's new terrain floor (`h <= tgt:terrainheight`). Parameter list now 6; the
+  duplicated integrator's departures from min's copy are down to one (the seed). Still on
+  the table, each gated on a test flight: `a_lat_max = g0·tan(tilt_max)` (0.3 is revealed
+  as Minmus's instance of exactly that), yaw `tau = t_go/3` frozen at ignition, and the
+  planner-side `speed_handoff < sqrt(2·a_dec·landing_height)` schedule check.
 
 - **Done (2026-07-18):** `notes/level-flight-fuel-optimization.md` — design note for a
   cruise optimizer atop the `autopilot` branch's cascade: a sixth, outermost loop that

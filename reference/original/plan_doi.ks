@@ -29,7 +29,7 @@
 // no longer protection — it is just a burn flown above the solved throttle
 // for its whole length. The endpoint is placed AT the site, and what
 // margin-keeping remains is reported as what it is: the solved throttle's
-// distance from its own bounds.
+// distance below the ceiling.
 
 @lazyglobal off.
 
@@ -49,14 +49,14 @@ run "../core/kepler".
 parameter gamma.
 parameter target_lat is 0.
 parameter target_lng is 0.
-// The arc contract: everything from here down must match what
+// The arc contract: speed_handoff and f_max must match what
 // powered_descent_min.ks is run with, or the descent priced here is not
-// the descent flown. The reasoning behind each value lives with its twin
-// there.
+// the descent flown. landing_height is the planner's own — the handoff
+// clearance it spends into the ellipse; the flight controller never sees
+// the number, which is the design.
 parameter landing_height is 50.
 parameter speed_handoff is 5.
 parameter f_max is 0.85.
-parameter f_min is 0.05.
 
 // The march's accuracy bounds — twins of the locals in
 // powered_descent_min.ks, and locals here for the same reason they are
@@ -65,11 +65,6 @@ parameter f_min is 0.05.
 // fractional speed change per step.
 local pitch_tol is 1.
 local v_frac is 0.02.
-// The throttle bisection's tolerance, matching the flight controller's
-// solve_f; and how far the coarse tier loosens the march (both accuracy
-// bounds scaled up, the tolerance by ten).
-local f_eps is 0.001.
-local coarse_scale is 5.
 
 local tgt is body:geopositionlatlng(target_lat, target_lng).
 // Altitude, above the datum, where the arc ends: landing_height above the
@@ -122,17 +117,14 @@ local mdot_full is ship:availablethrust / (engine_isp() * constant:g0).
 // === THE ARC, DUPLICATED ===
 // integrate_arc is powered_descent_min.ks's endpoint, nearly verbatim: the
 // plan is only as good as its price, and the price is only right if the
-// planner marches exactly the arc the flight controller will fly. Two
-// departures, both at the seams: the seed is the candidate ellipse's
-// periapsis instead of the live ship, and the accuracy bounds arrive as
-// parameters so the coarse tier can loosen them. Until the two share a
-// library, a change to either copy must be made in both.
+// planner marches exactly the arc the flight controller will fly. One
+// departure, at the seam: the seed is the candidate ellipse's periapsis
+// instead of the live ship. Until the two share a library, a change to
+// either copy must be made in both.
 
 function integrate_arc {
   parameter f.                    // throttle, as a fraction of full thrust
   parameter orbit_ is ship:orbit. // the descent ellipse the arc begins on
-  parameter ptol_ is pitch_tol.
-  parameter vfrac_ is v_frac.
 
   // The seed: periapsis is PDI's altitude, and the speed there is vis-viva
   // less the motion of the ground underneath, because the arc is flown
@@ -149,12 +141,14 @@ function integrate_arc {
   local theta is 0.        // ground angle swept, radians
   local t is 0.
   local steps is 0.
-  until speed <= speed_handoff or h <= 0 or steps >= 4000 {
+  // The floor is the site's terrain, not the datum, matching the flight
+  // controller: a throttle too weak to stop runs into ground that exists.
+  until speed <= speed_handoff or h <= tgt:terrainheight or steps >= 4000 {
     local r_ is body:radius + h.
     local g is body:mu / r_ ^ 2.
     local turn is abs(speed / r_ - g / speed).
-    local dt_angle is ptol_ / (max(1e-6, turn) * constant:radtodeg).
-    local dt_speed is vfrac_ * speed / (f * ship:availablethrust / m + g).
+    local dt_angle is pitch_tol / (max(1e-6, turn) * constant:radtodeg).
+    local dt_speed is v_frac * speed / (f * ship:availablethrust / m + g).
     local dt is min(dt_angle, dt_speed).
     local d_speed is (-(f * ship:availablethrust / m) - g * sin(pitch)) * dt.
     local d_pitch is (speed / r_ - g / speed) * cos(pitch)
@@ -181,33 +175,35 @@ function integrate_arc {
 // where the arc bottoms, not where it lands.
 function solve_throttle {
   parameter orbit_ is ship:orbit.
-  parameter ptol_ is pitch_tol.
-  parameter vfrac_ is v_frac.
-  parameter eps_ is f_eps.
 
   // Where the arc bottoms out, relative to where it should: negative when
   // the burn ran long and fell below the handoff, positive when it stopped
   // above it.
   local miss is {
     parameter f.
-    local arc is integrate_arc(f, orbit_, ptol_, vfrac_).
+    local arc is integrate_arc(f, orbit_).
     // Speed left with altitude left means the march hit its step cap while
     // still falling: wherever it stopped, its true bottom is lower. Report
     // it far below the handoff, which steers the search toward more
-    // throttle. (Speed left at h <= 0 is a real impact below the handoff,
-    // and the plain difference already says so.)
-    if arc["speed"] > speed_handoff and arc["h"] > 0 { return -1e9. }
+    // throttle. (Speed left at the terrain floor is a real impact below
+    // the handoff, and the plain difference already says so.)
+    if arc["speed"] > speed_handoff and arc["h"] > tgt:terrainheight {
+      return -1e9.
+    }
     return arc["h"] - h_handoff.
   }.
-  // Bisection needs the answer bracketed, and it is: f_min ends below the
-  // handoff and f_max above it. Returns -1 if that bracket does not hold,
-  // which is the caller's abort.
-  return bisect(miss, f_min, f_max, eps_).
+  // Bracketed at zero throttle and the ceiling: no thrust ends below the
+  // handoff (the march runs into the terrain or its step cap, both
+  // reported short), f_max above it, so the bottom end needs no tuned
+  // floor. The tolerance derives from the bracket — twelve halvings
+  // resolve the throttle to ~2e-4 of full scale, below anything the
+  // re-solve in flight cares about. Returns -1 if the bracket does not
+  // hold, which is the caller's abort.
+  return bisect(miss, 0, f_max, f_max / 4096).
 }
 
 // The price of an arc by the rocket equation, at today's mass — the few
-// kg the DOI burn spends first shift it by less than the coarse tier's
-// own error.
+// kg the DOI burn spends first shift it by less than the burn's own slop.
 function arc_dv {
   parameter f_, t_.
   return engine_isp() * constant:g0
@@ -302,15 +298,16 @@ function place_node {
 // metres anyway, so a plan converged tighter than the burn can deliver
 // buys nothing.
 //
-// Two tiers. The coarse tier runs the march with its accuracy bounds
-// loosened by coarse_scale and the throttle solve at ten times the
-// tolerance; its errors are priced away by the fine passes that follow, so
-// its only job is to hand the fine tier a nearby starting point — and, run
-// at slopes the human did not ask for, to price the judgment (the sweep
-// below). That second use is why it is a function that reports failure
-// instead of aborting: a slope that fails to settle is a fact for the
-// sweep to print, not a reason to stop.
-function coarse_fixed_point {
+// One tier, at flight fidelity: the adaptive march is cheap enough that
+// every pass prices exactly the arc the ship will fly, so the coarse
+// tier that used to hand this loop a starting point priced nothing worth
+// keeping. The fixed point places its candidate nodes with plan_node's
+// equatorial shortcut; the placement passes that follow correct what the
+// shortcut books. It is a function that reports failure instead of
+// aborting because the sweep below runs it at slopes the human did not
+// ask for, and a slope that fails to settle is a fact for the sweep to
+// print, not a reason to stop.
+function fixed_point {
   parameter gamma_.
   parameter verbose_ is false.
 
@@ -340,7 +337,7 @@ function coarse_fixed_point {
     // and more passes will not help.
     if iters >= 8 {
       return lexicon("ok", false, "why", "h_pdi moved " + round(abs(d_h))
-          + " m on coarse pass 8; the fixed point is not settling").
+          + " m on pass 8; the fixed point is not settling").
     }
     local nd is plan_node(h_pdi_, lead_).
     add nd.
@@ -349,16 +346,14 @@ function coarse_fixed_point {
       return lexicon("ok", false,
                      "why", "the DOI plan puts the burn in the past").
     }
-    set f_c to solve_throttle(nd:orbit, pitch_tol * coarse_scale,
-                              v_frac * coarse_scale, f_eps * 10).
+    set f_c to solve_throttle(nd:orbit).
     if f_c < 0 {
       remove nd.
-      return lexicon("ok", false, "why", "no throttle between " + f_min
-          + " and " + f_max + " flies the gamma " + round(gamma_, 2)
-          + " ellipse (PDI " + round(h_pdi_) + " m) down to the handoff").
+      return lexicon("ok", false, "why", "no throttle up to " + f_max
+          + " flies the gamma " + round(gamma_, 2) + " ellipse (PDI "
+          + round(h_pdi_) + " m) down to the handoff").
     }
-    local arc is integrate_arc(f_c, nd:orbit, pitch_tol * coarse_scale,
-                               v_frac * coarse_scale).
+    local arc is integrate_arc(f_c, nd:orbit).
     set dv_doi_ to nd:deltav:mag.
     remove nd.
 
@@ -370,7 +365,7 @@ function coarse_fixed_point {
     set lead_ to x_ / body:radius * constant:radtodeg.
     set iters to iters + 1.
     if verbose_ {
-      print "coarse " + iters + ": h_pdi " + round(h_pdi_) + " m  X "
+      print "pass " + iters + ": h_pdi " + round(h_pdi_) + " m  X "
           + round(x_ / 1000, 1) + " km  f " + round(f_c, 3) + ".".
     }
   }
@@ -378,26 +373,25 @@ function coarse_fixed_point {
                  "x", x_, "t", t_, "dv_doi", dv_doi_, "iters", iters).
 }
 
-local coarse is coarse_fixed_point(gamma, true).
-if not coarse["ok"] {
-  plan_abort(coarse["why"] + ". Re-think gamma or the parking orbit.").
+local fp is fixed_point(gamma, true).
+if not fp["ok"] {
+  plan_abort(fp["why"] + ". Re-think gamma or the parking orbit.").
 }
-local h_pdi is coarse["h_pdi"].
-local lead_deg is coarse["lead"].
-local coarse_iters is coarse["iters"].
+local h_pdi is fp["h_pdi"].
+local lead_deg is fp["lead"].
+local fp_iters is fp["iters"].
 
 // === THE PRICE OF GAMMA ===
 // gamma is the plan's one fuel lever, so price the judgment: the same
-// coarse fixed point at a slope shallower and one steeper than asked, each
-// with its DOI burn and its braking arc through the rocket equation.
-// Advisory only — nothing below reads these numbers — and coarse, so read
-// the differences, not the digits.
+// fixed point at a slope shallower and one steeper than asked, each with
+// its DOI burn and its braking arc through the rocket equation. Advisory
+// only — nothing below reads these numbers.
 local sweep_lines is list().
 for mult in list(0.75, 1, 1.5) {
   local g_try is gamma * mult.
   if g_try > 0 and g_try < 90 {
-    local r is coarse.
-    if mult <> 1 { set r to coarse_fixed_point(g_try). }
+    local r is fp.
+    if mult <> 1 { set r to fixed_point(g_try). }
     local line is "".
     if r["ok"] {
       set line to "# gamma " + round(g_try, 2) + " deg: dv "
@@ -415,28 +409,30 @@ for mult in list(0.75, 1, 1.5) {
   }
 }
 
-// The fine tier: flight fidelity, with the full placement feedback. Pass 1
-// refines the coarse tier's X; pass 2 confirms it. Three passes without
-// settling means something is inconsistent, not merely unconverged.
+// The placement passes: the fixed point placed its candidate nodes with
+// plan_node's equatorial shortcut; place_node now measures where
+// periapsis really falls and feeds the miss back. Pass 1 corrects what
+// the shortcut booked; pass 2 confirms it. Three passes without settling
+// means something is inconsistent, not merely unconverged.
 local f is 0.
 local x_arc is 0.
 local t_arc is 0.
 local v_pdi is 0.
-local fine is 0.
-local fine_passes is 0.
+local placed is 0.
+local place_passes is 0.
 local converged is false.
 
 until converged {
-  if fine_passes >= 3 {
-    plan_abort("the flight-fidelity solve did not settle in 3 passes.").
+  if place_passes >= 3 {
+    plan_abort("the placement passes did not settle in 3.").
   }
-  set fine to place_node(h_pdi, lead_deg).
-  local nd is fine["node"].
+  set placed to place_node(h_pdi, lead_deg).
+  local nd is placed["node"].
 
   set f to solve_throttle(nd:orbit).
   if f < 0 {
-    plan_abort("at flight fidelity, no throttle between " + f_min + " and "
-        + f_max + " flies the ellipse down to the handoff.").
+    plan_abort("on the placed ellipse, no throttle up to " + f_max
+        + " flies the arc down to the handoff.").
   }
   local arc is integrate_arc(f, nd:orbit).
   if arc["speed"] > speed_handoff {
@@ -453,8 +449,8 @@ until converged {
   // arriving long — the old allowance would only hold the flown throttle
   // above the solved one for the whole burn.
   local lead_new is x_arc / body:radius * constant:radtodeg.
-  set fine_passes to fine_passes + 1.
-  print "fine " + fine_passes + ": h_pdi " + round(h_new) + " m  X "
+  set place_passes to place_passes + 1.
+  print "placement " + place_passes + ": h_pdi " + round(h_new) + " m  X "
       + round(x_arc / 1000, 1) + " km  f " + round(f, 4) + ".".
 
   // Settled when the update moves the plan by less than the burn's own
@@ -470,7 +466,7 @@ until converged {
   }
 }
 
-local nd is fine["node"].
+local nd is placed["node"].
 
 // Ignition leads the node by half the burn, and the ship needs time to
 // swing onto the burn vector; a node closer than that will be burned late,
@@ -490,7 +486,7 @@ if nd:eta < burn_duration(nd:deltav:mag) / 2 + 60 {
 // site, fixed in that frame, is dotted against the plane normal. 10 s of
 // track is long enough to separate the footprints cleanly and short
 // enough to be straight.
-local t_pdi is fine["t_pdi"].
+local t_pdi is placed["t_pdi"].
 local u_pdi is (geoposition_at(t_pdi, nd:orbit):position
               - body:position):normalized.
 local u_next is (geoposition_at(t_pdi + 10, nd:orbit):position
@@ -520,18 +516,13 @@ if cross_res > 5 {
       + " remain at handoff.".
 }
 
-// The solved throttle's distance from its bounds is the trim's whole
-// authority: room above absorbs overshoot (raising f shortens the arc),
-// room below absorbs undershoot. Thin on either side means dispersions
-// this size go uncorrected.
-local f_band is f_max - f_min.
-if f_max - f < 0.1 * f_band {
+// The gap between the solved throttle and the ceiling is the trim's
+// authority to shorten the arc — the side that absorbs an overshoot.
+// Room below needs no twin warning: it is f itself, and a plan that
+// solved absurdly low announces itself in the delta-v report.
+if f_max - f < 0.1 * f_max {
   print "WARNING: f_solved " + round(f, 3) + " sits within 10% of f_max;"
       + " little authority remains to shorten the arc.".
-}
-if f - f_min < 0.1 * f_band {
-  print "WARNING: f_solved " + round(f, 3) + " sits within 10% of f_min;"
-      + " little authority remains to stretch the arc.".
 }
 
 // The price of gamma: the node's burn plus the braking arc by the rocket
@@ -558,18 +549,17 @@ report("# parking " + round(ship:orbit:periapsis) + " x "
     + round(ship:orbit:eccentricity, 4)).
 report("# h_pdi " + round(h_pdi) + " m (node delivers "
     + round(nd:orbit:periapsis) + ")  X " + round(x_arc) + " m  lead "
-    + round(lead_deg, 2) + " deg  passes " + coarse_iters + " coarse / "
-    + fine_passes + " fine").
+    + round(lead_deg, 2) + " deg  passes " + fp_iters + " fixed-point / "
+    + place_passes + " placement").
 report("# f_solved " + round(f, 4) + "  margin " + round(f_max - f, 3)
-    + " above / " + round(f - f_min, 3) + " below  arc " + round(t_arc, 1)
-    + " s").
+    + " below f_max  arc " + round(t_arc, 1) + " s").
 report("# dv  doi " + round(dv_doi, 1) + "  arc " + round(dv_arc, 1)
     + "  total " + round(dv_doi + dv_arc, 1) + " m/s (terminal excluded)").
 report("# cross_pdi " + round(cross_pdi) + " m  bias_pdi "
     + round(bias_deg, 2) + " deg  residual " + round(cross_res, 1) + " m").
 report("# node  dv " + round(nd:deltav:mag, 1) + " m/s  eta "
-    + round(nd:eta) + " s  pe_lng_err " + round(fine["err"], 2)
-    + " deg in " + fine["attempts"] + " attempts").
+    + round(nd:eta) + " s  pe_lng_err " + round(placed["err"], 2)
+    + " deg in " + placed["attempts"] + " attempts").
 // The sweep, into the log as well: the prices the judgment was made
 // against belong with the plan they produced.
 for l in sweep_lines { log l to planlog. }

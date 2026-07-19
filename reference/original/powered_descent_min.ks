@@ -41,7 +41,6 @@ run "../core/optimize".    // bisect
 parameter target_lat is 0.
 parameter target_lng is 0.
 parameter speed_handoff is 5.    // the arc contract: must match plan_doi
-parameter f_min is 0.05.
 parameter f_max is 0.85.
 
 local tgt is body:geopositionlatlng(target_lat, target_lng).
@@ -111,9 +110,12 @@ function dist_to_site {
 // The one throttle whose arc ends over the site. Reach and distance are
 // sampled in the same breath, so the miss is a property of the state and
 // the throttle, steady while the ship flies on beneath the solve.
+// Bracketed at zero: a no-thrust arc runs into the terrain floor and its
+// reach there is a real undershoot, so the bottom end needs no tuned
+// floor — the ceiling is the only throttle bound the descent has.
 function solve_f {
   local miss is { parameter f. return endpoint(f)["x"] - dist_to_site(). }.
-  return bisect(miss, f_min, f_max, 0.001).
+  return bisect(miss, 0, f_max, 0.001).
 }
 
 // === FLIGHT RECORDER ===
@@ -218,7 +220,7 @@ until ship:velocity:surface:mag <= speed_handoff {
 // acceleration, so authority is the same on any craft — nulls the horizontal
 // drift the old free-fall let ride, cheap because it acts over the whole fall,
 // bounded by tilt_max so the craft can always swing back to brake, and deadzoned
-// below f_min so a centred ship idles the engine rather than burning a whisper it
+// below f_idle so a centred ship idles the engine rather than burning a whisper it
 // can't feel. At the crossing the throttle commands exactly a_req, the deceleration
 // that carries the current speed to v_floor at the pad: (v^2 - v_floor^2)/2h.
 // a_req equals a_dec at the crossing and rises into the f_max..1 reserve if the
@@ -231,6 +233,7 @@ local v_floor is 2.
 local h_pad is 5.              // the burn spends its speed to v_floor by here; the last h_pad is a gentle coast
 local a_lat_max is 0.3.        // cap on the free-fall lateral correction — an acceleration (m/s^2), so craft-free
 local tilt_max is 30.          // cap on tilt from plumb, degrees — the attitude margin kept to still stick the burn
+local f_idle is 0.05.          // free-fall idle threshold: terminal's own, not the solve's — below this the whisper is spent, not felt
 local lock a_dec to f_max * ship:availablethrust / ship:mass - g0.
 local lock v_sched to sqrt(2 * a_dec * max(0, alt:radar - h_pad)).
 local lock a_req to (verticalspeed ^ 2 - v_floor ^ 2) / (2 * max(1, alt:radar - h_pad)).
@@ -251,12 +254,12 @@ local lock tilt_frac to min(1, tan(vang(up:vector, tilt())) / tan(tilt_max)).
 // a_cmd is the commanded thrust acceleration: in free-fall the lateral correction,
 // capped at a_lat_max; below the schedule the kinematic suicide brake. thr_raw is
 // the throttle that delivers it — it rises to hold a_lat_max as TWR falls — and
-// the free-fall throttle deadzones below f_min so a whisper too small to feel lets
+// the free-fall throttle deadzones below f_idle so a whisper too small to feel lets
 // the ship truly fall instead of running the engine.
 local lock in_ff to abs(verticalspeed) < v_sched.
 local lock a_cmd to choose a_lat_max * tilt_frac if in_ff else g0 + a_req.
 local lock thr_raw to a_cmd * ship:mass / max(0.001, ship:availablethrust).
-lock throttle to choose 0 if in_ff and thr_raw < f_min else thr_raw.
+lock throttle to choose 0 if in_ff and thr_raw < f_idle else thr_raw.
 lock steering to lookdirup(tilt(), ship:facing:topvector).
 gear on.
 set t_logged to 0.
