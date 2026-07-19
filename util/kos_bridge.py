@@ -49,7 +49,6 @@ OPT_NAWS = 31       # negotiate about window size
 TTYPE_IS, TTYPE_SEND = 0, 1
 
 TERM_NAME = b"XTERM"
-TERM_COLS, TERM_ROWS = 120, 50
 
 # Cursor moves, colour changes, and the like. Stripped from the output file.
 ANSI_RE = re.compile(r'\x1b\[[0-9;?]*[A-Za-z]|\x1b[()][A-Z0-9]|\x1b[=>]')
@@ -144,16 +143,16 @@ class KOSBridge:
             self.remote_opts[opt] = wanted
             self.send_option(DO if wanted else DONT, opt)
         elif verb in (DO, DONT):
-            wanted = verb == DO and opt in (OPT_TTYPE, OPT_NAWS)
+            # We answer DO TTYPE (the terminal type is the price of admission,
+            # see the module docstring) but decline NAWS. Reporting a window
+            # size makes kOS resize its in-game terminal GUI to match, which
+            # disrupts the layout on screen; leaving NAWS unnegotiated lets kOS
+            # keep whatever size it already has.
+            wanted = verb == DO and opt == OPT_TTYPE
             if self.local_opts.get(opt) == wanted:
                 return
             self.local_opts[opt] = wanted
             self.send_option(WILL if wanted else WONT, opt)
-            if wanted and opt == OPT_NAWS:
-                # Width and height go out as two big-endian 16-bit numbers.
-                self.send_subneg(bytes([OPT_NAWS]) +
-                                 TERM_COLS.to_bytes(2, 'big') +
-                                 TERM_ROWS.to_bytes(2, 'big'))
 
     def handle_subneg(self, payload):
         if len(payload) >= 2 and payload[0] == OPT_TTYPE and payload[1] == TTYPE_SEND:
