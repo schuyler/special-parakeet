@@ -57,6 +57,12 @@ parameter target_lng is 0.
 parameter landing_height is 50.
 parameter speed_handoff is 5.
 parameter f_max is 0.85.
+// The coast's clearance floor, metres: the walk below the placement
+// passes refuses the plan if the ellipse ever comes closer than this to
+// the terrain between the DOI burn and PDI. Defaults to landing_height —
+// the same benefit of the doubt the descent grants terrain everywhere
+// else.
+parameter coast_clearance is landing_height.
 
 // The march's accuracy bounds — twins of the locals in
 // powered_descent_min.ks, and locals here for the same reason they are
@@ -477,6 +483,54 @@ if nd:eta < burn_duration(nd:deltav:mag) / 2 + 60 {
       + " orient and ignite on time. Re-run for the next crossing.").
 }
 
+// === THE COAST ===
+// The one stretch the gamma ray never certifies: between the DOI burn
+// and PDI the ship rides the ellipse over terrain the plan has so far
+// only assumed away — and it binds for real: measured over the Great
+// Flats, the coast's clearance beat PDI's by ten metres, on the
+// flattest ground the body owns. The check is nearly exact, because the
+// coast is on rails and kOS terrain is the game's own ground: walk the
+// placed ellipse from the burn to PDI, keep the minimum of altitude
+// over terrain, refuse the plan if it comes under coast_clearance. No
+// early-out cleverness — half an orbit of samples is cheap at this
+// IPU. The step is anchored to ground metres at periapsis speed, where
+// the coast is lowest and fastest, so it is an accuracy bound like
+// pitch_tol, not a craft or body number.
+local coast_dx is 200.
+local t_node is timestamp(nd:time).
+local t_pdi is placed["t_pdi"].
+local dt_c is coast_dx / orbital_speed(nd:orbit:periapsis, nd:orbit).
+local cc_samples is floor((t_pdi:seconds - t_node:seconds) / dt_c).
+print "Walking the coast: " + cc_samples + " samples.".
+
+local cc_min is 1e12.
+local cc_dt is 0.      // seconds before PDI — open item 1's own coordinate
+local cc_alt is 0.
+local cc_terr is 0.
+local cc_lng is 0.
+local i is 0.
+until t_pdi:seconds - i * dt_c < t_node:seconds {
+  local t_i is timestamp(t_pdi:seconds - i * dt_c).
+  local st is orbit_at(t_i, nd:orbit).
+  local alt_i is st["position"]:mag - body:radius.
+  local geo is geoposition_at(t_i, nd:orbit, st["position"]).
+  if alt_i - geo:terrainheight < cc_min {
+    set cc_min to alt_i - geo:terrainheight.
+    set cc_dt to i * dt_c.
+    set cc_alt to alt_i.
+    set cc_terr to geo:terrainheight.
+    set cc_lng to geo:lng.
+  }
+  set i to i + 1.
+}
+if cc_min < coast_clearance {
+  plan_abort("the coast dips to " + round(cc_min) + " m over the terrain "
+      + round(cc_dt) + " s before PDI (ellipse " + round(cc_alt)
+      + " m, terrain " + round(cc_terr) + " m, lng " + round(cc_lng, 2)
+      + "); the floor is " + coast_clearance + " m. Steepen gamma or"
+      + " move the site.").
+}
+
 // === THE VERDICT ===
 
 // The plane the node delivers, measured as the flight controller will
@@ -486,7 +540,6 @@ if nd:eta < burn_duration(nd:deltav:mag) / 2 + 60 {
 // site, fixed in that frame, is dotted against the plane normal. 10 s of
 // track is long enough to separate the footprints cleanly and short
 // enough to be straight.
-local t_pdi is placed["t_pdi"].
 local u_pdi is (geoposition_at(t_pdi, nd:orbit):position
               - body:position):normalized.
 local u_next is (geoposition_at(t_pdi + 10, nd:orbit):position
@@ -570,6 +623,10 @@ report("# h_pdi " + round(h_pdi) + " m (node delivers "
     + place_passes + " placement").
 report("# f_solved " + round(f, 4) + "  margin " + round(f_max - f, 3)
     + " below f_max  arc " + round(t_arc, 1) + " s").
+report("# coast  min clearance " + round(cc_min) + " m at " + round(cc_dt)
+    + " s before PDI (ellipse " + round(cc_alt) + " m, terrain "
+    + round(cc_terr) + " m, lng " + round(cc_lng, 2) + ")  floor "
+    + coast_clearance + " m  " + cc_samples + " samples").
 report("# dv  doi " + round(dv_doi, 1) + "  arc " + round(dv_arc, 1)
     + "  total " + round(dv_doi + dv_arc, 1) + " m/s (terminal excluded)").
 report("# cross_pdi " + round(cross_pdi) + " m  bias_pdi "

@@ -305,6 +305,24 @@ speculation, not planning.
 
 *Last updated: 2026-07-19*
 
+- **Done (2026-07-19, still later):** the coast rule, landed in `plan_doi.ks` just ahead of
+  its first flight (Schuyler testing the revised planner as this was written). A new
+  `=== THE COAST ===` section after the placement passes walks the placed ellipse from the
+  DOI burn to PDI — kepler's `orbit_at`/`geoposition_at` on `nd:orbit`, one sample per ~200
+  ground-metres at periapsis speed (`coast_dx`, a local accuracy bound like `pitch_tol`), no
+  early-out because half an orbit of samples is cheap at ipu 2000 — keeps the minimum of
+  ellipse-altitude over terrain, and aborts the plan if it comes under `coast_clearance`, a
+  new 7th parameter defaulting to `landing_height` (census 6 → 7; the price of certifying
+  the one stretch nothing checked, justified by open item 1's measured ten-metre Great Flats
+  margin). The minimum and where it fell — seconds before PDI, the open item's own
+  coordinate — join `doi_plan.log`. Check is near-exact, not a model check: the coast is on
+  rails pre-burn and kOS terrain is the game's own ground; residual risks are the 200 m
+  sample spacing and the burn's own periapsis slop. `optimize_descent_angle.ks`'s header and
+  `gamma_floor` comment updated (the coast is no longer "unwritten"/"the human's risk"; the
+  floor now exists to keep the survey from proposing plans the coast walk would refuse late).
+  Open item 1 annotated settled-in-code — the clearance number itself stays judgment.
+  **Unflown**, and first in line to fly.
+
 - **Done (2026-07-19, later):** `reference/original/optimize_descent_angle.ks` — piece 3's
   front half, new. The terrain survey that stood behind gamma as "the human's judgment" in
   `plan_doi.ks` now exists as code: walk the approach up-range from the site and take the

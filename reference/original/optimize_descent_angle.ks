@@ -42,9 +42,10 @@
 // and would happily certify a mountain the coast flies into. The coast's
 // rule is a flat clearance walked along the placed ellipse (design note,
 // open item 1), it binds for real — measured ten metres over the Great
-// Flats — and it is a property of the node, so it belongs with the node,
-// in plan_doi's verdict. It is not written yet; until it is, the coast is
-// still the human's risk.
+// Flats — and it is a property of the node, so it lives with the node:
+// plan_doi walks the placed ellipse from the burn to PDI and refuses any
+// plan whose clearance dips under its coast_clearance. This survey
+// certifies the arc's corridor and nothing more.
 
 @lazyglobal off.
 
@@ -71,11 +72,13 @@ parameter landing_height is 50.
 // model earns a number of its own.
 parameter terrain_margin is landing_height.
 // The shallowest approach worth flying regardless of how flat the survey
-// reads, degrees. The floor is the unwritten coast rule's understudy: a
-// near-level ray puts PDI barely above the handoff altitude and lays the
-// coast along the ground for the length of the approach, which no
-// clearance walk would pass. Some slope must be chosen for plan_doi to
-// price; over the Great Flats, which demand nothing, this is it.
+// reads, degrees. A near-level ray puts PDI barely above the handoff
+// altitude and lays the coast along the ground for the length of the
+// approach — plan_doi's coast walk will refuse that plan, but only after
+// the fixed point has spent its passes on it; the floor keeps the survey
+// from proposing it in the first place. Some slope must be chosen for
+// plan_doi to price; over the Great Flats, which demand nothing, this
+// is it.
 parameter gamma_floor is 1.
 // Sample spacing, metres — the design note's open item 8: IPU budget
 // against stepping over a spire.
