@@ -213,10 +213,12 @@ until ship:velocity:surface:mag <= speed_handoff {
 // Suicide burn with no servo gain in the vertical, plus a whisper of lateral
 // steering through the fall. Below v_sched — the speed a brake at a_dec could
 // still arrest before the pad, a_dec being f_max's deceleration net of gravity —
-// the ship falls, but not dead-stick: a tipped throttle capped at throttle_ff_max
-// nulls the horizontal drift the old free-fall let ride, cheap because it acts
-// over the whole fall, and bounded by tilt_max so the craft can always swing back
-// to brake. At the crossing the throttle commands exactly a_req, the deceleration
+// the ship falls, but not dead-stick: a tipped thrust capped at a_lat_max — an
+// acceleration, so authority is the same on any craft — nulls the horizontal
+// drift the old free-fall let ride, cheap because it acts over the whole fall,
+// bounded by tilt_max so the craft can always swing back to brake, and deadzoned
+// below f_min so a centred ship idles the engine rather than burning a whisper it
+// can't feel. At the crossing the throttle commands exactly a_req, the deceleration
 // that carries the current speed to v_floor at the pad: (v^2 - v_floor^2)/2h.
 // a_req equals a_dec at the crossing and rises into the f_max..1 reserve if the
 // ship is behind; near the ground a_req falls below zero and the throttle drops
@@ -226,7 +228,7 @@ print "TERMINAL: from " + round(alt:radar) + " m.".
 local g0 is body:mu / body:radius ^ 2.
 local v_floor is 2.
 local h_pad is 5.              // the burn spends its speed to v_floor by here; the last h_pad is a gentle coast
-local throttle_ff_max is 0.05. // cap on the free-fall throttle spent nulling drift — the dv wasted fighting gravity
+local a_lat_max is 0.3.        // cap on the free-fall lateral correction — an acceleration (m/s^2), so craft-free
 local tilt_max is 30.          // cap on tilt from plumb, degrees — the attitude margin kept to still stick the burn
 local lock a_dec to f_max * ship:availablethrust / ship:mass - g0.
 local lock v_sched to sqrt(2 * a_dec * max(0, alt:radar - h_pad)).
@@ -243,24 +245,27 @@ function tilt {
   return up:vector + horiz.
 }
 // How far the hold is tipped, 0 (plumb) to 1 (at tilt_max): the fraction of the
-// free-fall throttle cap to spend, so a centred ship in free-fall burns nothing.
+// lateral correction cap to spend, so a centred ship in free-fall asks for nothing.
 local lock tilt_frac to min(1, tan(vang(up:vector, tilt())) / tan(tilt_max)).
-// a_cmd is the commanded thrust acceleration: in free-fall the tipped correction,
-// capped at throttle_ff_max; below the schedule the kinematic suicide brake.
-local lock a_cmd to choose throttle_ff_max * tilt_frac * ship:availablethrust / ship:mass
-                          if abs(verticalspeed) < v_sched
-                          else g0 + a_req.
-lock throttle to a_cmd * ship:mass / max(0.001, ship:availablethrust).
+// a_cmd is the commanded thrust acceleration: in free-fall the lateral correction,
+// capped at a_lat_max; below the schedule the kinematic suicide brake. thr_raw is
+// the throttle that delivers it — it rises to hold a_lat_max as TWR falls — and
+// the free-fall throttle deadzones below f_min so a whisper too small to feel lets
+// the ship truly fall instead of running the engine.
+local lock in_ff to abs(verticalspeed) < v_sched.
+local lock a_cmd to choose a_lat_max * tilt_frac if in_ff else g0 + a_req.
+local lock thr_raw to a_cmd * ship:mass / max(0.001, ship:availablethrust).
+lock throttle to choose 0 if in_ff and thr_raw < f_min else thr_raw.
 lock steering to lookdirup(tilt(), ship:facing:topvector).
 gear on.
 set t_logged to 0.
 until ship:status = "LANDED"
     or (alt:radar < 5 and verticalspeed > -0.1) {
   if time:seconds - t_logged >= 1 {
-    // max(0.001, ...) keeps the logged thrust vector pointing up through the
-    // free-fall, when a_cmd is zero, rather than collapsing to a bad angle.
+    // Log the thrust actually commanded (throttle, so the deadzone shows as
+    // zero); max(0.001, ...) keeps the vector pointing up when it is off.
     log_state("TERMINAL", 0, tgt, tgt:terrainheight,
-        max(0.001, a_cmd) * tilt():normalized).
+        max(0.001, throttle * ship:availablethrust / ship:mass) * tilt():normalized).
     // Fixed-row readout in BRK's idiom: f the throttle, v the descent rate,
     // miss the horizontal offset that becomes the landing error. sched is the
     // speed that gates ignition (the burn lights when v reaches it); drift is
