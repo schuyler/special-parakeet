@@ -245,7 +245,9 @@ class KOSBridge:
                         if not cmd:
                             continue
                         self.log(f"SEND: {cmd}")
-                        self.send_raw((cmd + '\n').encode('utf-8'))
+                        # kOS's XTERM command line submits on carriage return
+                        # (0x0D); a bare line feed only moves the cursor down.
+                        self.send_raw((cmd + '\r').encode('utf-8'))
             except Exception as e:
                 self.log(f"Command pipe error: {e}")
                 time.sleep(0.1)
