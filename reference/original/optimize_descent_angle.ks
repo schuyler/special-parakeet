@@ -91,7 +91,9 @@ local tgt is body:geopositionlatlng(target_lat, target_lng).
 local h_handoff is tgt:terrainheight + landing_height.
 
 // The survey is a few thousand terrain reads; run them at the processor's
-// ceiling and put the setting back on the way out.
+// ceiling and put the setting back on the way out — every planned exit
+// restores it, but an uncaught error mid-walk cannot (kOS has no finally)
+// and leaves the ceiling in place until the next run or a hand reset.
 local ipu_prior is config:ipu.
 set config:ipu to 2000.
 
@@ -216,16 +218,11 @@ if g_run >= gamma_floor {
              + round(g_run, 2) + " deg (" + round(force_h) + " m at "
              + round(force_x / 1000, 1) + " km)")
          if force_x > 0
-         else "no terrain on the walk rose above the anchor at all")).
+         else "no sample on the walk demanded a positive slope")).
 }
 report("# walk " + samples + " samples over " + round(x / 1000, 1)
     + " km — a quarter of the body; terrain beyond is coast country,"
     + " not this survey's to certify").
-if gamma > 30 {
-  print "WARNING: gamma " + round(gamma, 1) + " deg is not an approach"
-      + " corridor, it is a wall next to the site. Move the site rather"
-      + " than flying this.".
-}
 
 // The corridor itself, log only: enough of the profile to plot the ray
 // against the ground it clears.
