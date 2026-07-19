@@ -49,12 +49,28 @@ local mdot_full is ship:availablethrust / (engine_isp() * constant:g0).
 local ipu_prior is config:ipu.
 set config:ipu to 2000.
 
+// Integration tolerances for endpoint's Euler steps — accuracy bounds, not
+// craft or body numbers. pitch_tol caps the flight-path rotation per step
+// (degrees); v_frac caps the fractional speed change per step. Either falsifies
+// against a logged arc: too loose and the integrated reach drifts from the flown one.
+local pitch_tol is 1.
+local v_frac is 0.02.
+
 // Where the arc from the ship's current state at throttle f bottoms out:
 // the gravity turn integrated by Euler's method until the speed is spent.
 // Thrust, all of it retrograde, takes speed; gravity's along-path part
 // adds speed back as the nose drops; its across-path part turns the path
 // down at g*cos(pitch)/speed while the horizon rotates away under the
 // ship at speed*cos(pitch)/r — the two rates whose difference is the turn.
+//
+// The step is chosen inside the loop, not fixed: dt is the smaller of the
+// time to rotate the flight path by pitch_tol and the time to change speed by
+// v_frac of itself. Both track the dynamics, so the step refines where the
+// path bends over and never depends on thrust — a weak engine no longer
+// stretches the step until Euler's method diverges. The arc ends when speed
+// is spent or when it reaches the ground (h <= 0); a throttle too weak to stop
+// runs into the surface, and its reach there is a real undershoot, not garbage
+// from integrating on below the ground. The step cap is a non-convergence guard.
 function endpoint {
   parameter f.
   local speed is ship:velocity:surface:mag.
@@ -64,10 +80,13 @@ function endpoint {
   local theta is 0.                // ground angle swept, radians
   local t is 0.
   local steps is 0.
-  local dt is (speed - speed_handoff) * m / (f * ship:availablethrust) / 150.
-  until speed <= speed_handoff or steps >= 600 {
+  until speed <= speed_handoff or h <= 0 or steps >= 4000 {
     local r_ is body:radius + h.
     local g is body:mu / r_ ^ 2.
+    local turn is abs(speed / r_ - g / speed).
+    local dt_angle is pitch_tol / (max(1e-6, turn) * constant:radtodeg).
+    local dt_speed is v_frac * speed / (f * ship:availablethrust / m + g).
+    local dt is min(dt_angle, dt_speed).
     local d_speed is (-(f * ship:availablethrust / m) - g * sin(pitch)) * dt.
     local d_pitch is (speed / r_ - g / speed) * cos(pitch)
                      * constant:radtodeg * dt.
@@ -174,44 +193,94 @@ until ship:velocity:surface:mag <= speed_handoff {
         tgt, tgt:terrainheight,
         f_cmd * (ship:availablethrust / ship:mass) * braking_dir():normalized,
         vdot(tgt:position, n)).
+    // Terminal feedback on the solve: x is the held throttle's reach, d the
+    // remaining ground distance to the site; their difference is the miss the
+    // re-solve is nulling, watchable as the arc shortens and the ship closes.
+    // Printed in place at a fixed row (trailing spaces overwrite a prior,
+    // longer line) so the readout updates rather than scrolling the screen.
+    local x is endpoint(f_cmd)["x"].
+    local d is dist_to_site().
+    print "BRK f=" + round(f_cmd, 3) + " x=" + round(x)
+        + " d=" + round(d) + " miss=" + round(x - d)
+        + " v=" + round(ship:velocity:surface:mag, 1) + "        "
+        at (0, 10).
     set t_logged to time:seconds.
   }
   wait 0.
 }
 
 // === TERMINAL DESCENT ===
-// Reference descent rate from radar altitude (fall at alt/10, capped for
-// continuity with the handoff, floored so touchdown happens); throttle
-// servos onto it around the thrust that exactly cancels gravity. Steering
-// hangs plumb, tipped against drift, walking the last metres to the site.
+// Suicide burn with no servo gain in the vertical, plus a whisper of lateral
+// steering through the fall. Below v_sched — the speed a brake at a_dec could
+// still arrest before the pad, a_dec being f_max's deceleration net of gravity —
+// the ship falls, but not dead-stick: a tipped throttle capped at throttle_ff_max
+// nulls the horizontal drift the old free-fall let ride, cheap because it acts
+// over the whole fall, and bounded by tilt_max so the craft can always swing back
+// to brake. At the crossing the throttle commands exactly a_req, the deceleration
+// that carries the current speed to v_floor at the pad: (v^2 - v_floor^2)/2h.
+// a_req equals a_dec at the crossing and rises into the f_max..1 reserve if the
+// ship is behind; near the ground a_req falls below zero and the throttle drops
+// under hover, settling the ship instead of bouncing it. The schedule fixes
+// ignition, the kinematics fix the brake, tilt walks in the horizontal.
 print "TERMINAL: from " + round(alt:radar) + " m.".
 local g0 is body:mu / body:radius ^ 2.
-local lock v_ref to -min(speed_handoff, max(2, alt:radar / 10)).
-lock throttle to (g0 + 0.3 * (v_ref - verticalspeed)) * ship:mass
-                 / max(0.001, ship:availablethrust).
+local v_floor is 2.
+local h_pad is 5.              // the burn spends its speed to v_floor by here; the last h_pad is a gentle coast
+local throttle_ff_max is 0.05. // cap on the free-fall throttle spent nulling drift — the dv wasted fighting gravity
+local tilt_max is 30.          // cap on tilt from plumb, degrees — the attitude margin kept to still stick the burn
+local lock a_dec to f_max * ship:availablethrust / ship:mass - g0.
+local lock v_sched to sqrt(2 * a_dec * max(0, alt:radar - h_pad)).
+local lock a_req to (verticalspeed ^ 2 - v_floor ^ 2) / (2 * max(1, alt:radar - h_pad)).
+
+// Plumb, tipped against horizontal drift toward the site, but no further than
+// tilt_max so a swing back to brake is always in reach.
 function tilt {
   local off is vxcl(up:vector, tgt:position).
   local v_err is vxcl(up:vector, ship:velocity:surface)
                - off * min(0.2, 3 / max(0.001, off:mag)).
-  return up:vector - 0.1 * v_err.
+  local horiz is -0.1 * v_err.
+  if horiz:mag > tan(tilt_max) { set horiz to horiz:normalized * tan(tilt_max). }
+  return up:vector + horiz.
 }
+// How far the hold is tipped, 0 (plumb) to 1 (at tilt_max): the fraction of the
+// free-fall throttle cap to spend, so a centred ship in free-fall burns nothing.
+local lock tilt_frac to min(1, tan(vang(up:vector, tilt())) / tan(tilt_max)).
+// a_cmd is the commanded thrust acceleration: in free-fall the tipped correction,
+// capped at throttle_ff_max; below the schedule the kinematic suicide brake.
+local lock a_cmd to choose throttle_ff_max * tilt_frac * ship:availablethrust / ship:mass
+                          if abs(verticalspeed) < v_sched
+                          else g0 + a_req.
+lock throttle to a_cmd * ship:mass / max(0.001, ship:availablethrust).
 lock steering to lookdirup(tilt(), ship:facing:topvector).
 gear on.
 set t_logged to 0.
 until ship:status = "LANDED"
     or (alt:radar < 5 and verticalspeed > -0.1) {
   if time:seconds - t_logged >= 1 {
+    // max(0.001, ...) keeps the logged thrust vector pointing up through the
+    // free-fall, when a_cmd is zero, rather than collapsing to a bad angle.
     log_state("TERMINAL", 0, tgt, tgt:terrainheight,
-        (g0 + 0.3 * (v_ref - verticalspeed)) * tilt():normalized).
+        max(0.001, a_cmd) * tilt():normalized).
+    // Fixed-row readout in BRK's idiom: f the throttle, v the descent rate,
+    // miss the horizontal offset that becomes the landing error. sched is the
+    // speed that gates ignition (the burn lights when v reaches it); drift is
+    // the horizontal speed the burn cannot correct until it is lit.
+    print "TRM r=" + round(alt:radar) + " v=" + round(verticalspeed, 1)
+        + " sched=" + round(v_sched) + " f=" + round(throttle, 3)
+        + " miss=" + round(vxcl(up:vector, tgt:position):mag)
+        + " drift=" + round(vxcl(up:vector, ship:velocity:surface):mag, 1)
+        + "     " at (0, 10).
     set t_logged to time:seconds.
   }
   wait 0.
 }
 lock throttle to 0.
+lock steering to up.        // hold the ship plumb while the legs settle
 wait 3.
 unlock steering.
 unlock throttle.
 set ship:control:pilotmainthrottle to 0.
+sas on.
 set config:ipu to ipu_prior.
 local miss is vxcl(up:vector, tgt:position):mag.
 print "Landed. Miss: " + round(miss) + " m.".
