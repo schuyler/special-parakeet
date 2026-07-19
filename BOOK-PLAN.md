@@ -339,10 +339,13 @@ speculation, not planning.
   fixed point at flight fidelity (the tiers were rent paid to the fixed-step integrator),
   bisection tolerance derived from the bracket (`f_max/4096`), and the duplicated march
   synced to min's new terrain floor (`h <= tgt:terrainheight`). Parameter list now 6; the
-  duplicated integrator's departures from min's copy are down to one (the seed). Still on
-  the table, each gated on a test flight: `a_lat_max = g0·tan(tilt_max)` (0.3 is revealed
-  as Minmus's instance of exactly that), yaw `tau = t_go/3` frozen at ignition, and the
-  planner-side `speed_handoff < sqrt(2·a_dec·landing_height)` schedule check.
+  duplicated integrator's departures from min's copy are down to one (the seed). The two
+  min-side derivations then landed as well, **both unflown**: `a_lat_max = g0·tan(tilt_max)`
+  (0.3 is revealed as Minmus's instance of exactly that — near-no-op there, real elsewhere)
+  and yaw `tau = t_go/3` frozen at ignition (closure becomes e^-3 of the PDI offset by
+  construction; the planner's verdict check updated to match, its residual warning now
+  reading "five percent of this offset is N m"). Next flight verifies both. Still on the
+  table: the planner-side `speed_handoff < sqrt(2·a_dec·landing_height)` schedule check.
 
 - **Done (2026-07-18):** `notes/level-flight-fuel-optimization.md` — design note for a
   cruise optimizer atop the `autopilot` branch's cascade: a sixth, outermost loop that

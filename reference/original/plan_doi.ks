@@ -494,16 +494,16 @@ local u_next is (geoposition_at(t_pdi + 10, nd:orbit):position
 local n_track is vcrs(u_next - u_pdi, u_pdi):normalized.
 local cross_pdi is vdot(tgt:position - body:position, n_track).
 
-// What the braking phase's yaw does with that offset. Its law: pretend the
-// ship owes a sideways speed of cross/tau toward the site's plane and null
-// it into the retrograde hold. Priced two ways, both against the law
-// actually flown. The bias angle at PDI is the demanded sideways speed
-// over the forward speed — past a few degrees the yaw stops being the
-// cheap correction the design assumes, and the parking orbit's plane is
-// the thing to fix. The residual is the offset a tau-constant closure
-// leaves after the whole burn — if the burn is short against tau, the
-// plane never closes and terminal's tilt walk inherits the rest.
-local tau_yaw is 20.               // braking_dir's closing time constant
+// What the braking phase's yaw does with that offset. Its law: pretend
+// the ship owes a sideways speed of cross/tau toward the site's plane and
+// null it into the retrograde hold, tau being a third of the burn frozen
+// at ignition. That construction fixes the closure — e^-3, five percent,
+// of the PDI offset survives to handoff, where terminal's tilt walk
+// inherits it — but not the price: the bias angle at PDI is the demanded
+// sideways speed over the forward speed, and past a few degrees the yaw
+// stops being the cheap correction the design assumes. Either warning
+// means fix the parking orbit's plane, not the bias.
+local tau_yaw is t_arc / 3.        // braking_dir's twin: frozen at ignition
 local bias_deg is arctan(abs(cross_pdi) / tau_yaw / v_pdi).
 local cross_res is abs(cross_pdi) * constant:e ^ (-t_arc / tau_yaw).
 if bias_deg > 5 {
@@ -511,9 +511,9 @@ if bias_deg > 5 {
       + " bias at PDI. Fix the parking orbit's plane before burning this.".
 }
 if cross_res > 5 {
-  print "WARNING: the burn is short against the yaw's " + tau_yaw + " s"
-      + " closure; about " + round(cross_res) + " m of cross-track will"
-      + " remain at handoff.".
+  print "WARNING: the five-percent residual of this plane offset is "
+      + round(cross_res) + " m at handoff — more than terminal's tilt"
+      + " walk should inherit.".
 }
 
 // The gap between the solved throttle and the ceiling is the trim's

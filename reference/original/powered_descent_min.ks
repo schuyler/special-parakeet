@@ -153,6 +153,12 @@ wait until eta:periapsis <= 1.
 local f_cmd is solve_f().
 if f_cmd < 0 { set f_cmd to f_max. }   // unreachable site: brake hard, land short
 local t_go is endpoint(f_cmd)["t"].
+// The plane-closing time constant: a third of the burn, frozen at
+// ignition, so the plane closes early — while the ship is fast, where a
+// degree of yaw costs least — on any craft, leaving e^-3 (five percent)
+// of the PDI offset at handoff. Frozen rather than tracking t_go so the
+// shrinking horizon never demands a growing bias for whatever remains.
+local tau_yaw is t_go / 3.
 print "BRAKE: f " + round(f_cmd, 3) + ", "
     + round(dist_to_site() / 1000, 1) + " km to the site.".
 
@@ -166,13 +172,13 @@ log "# h_pdi " + round(ship:altitude) + "  speed_pdi "
 log "t,phase,t_go,alt,radar,v_to_site,v_vert,aim_dist,a_cmd,throttle,facing_err,mass,dv_rem,pitch,cmd_pitch,cross"
     to flightlog.
 
-// Retrograde, biased: pretend the ship owes a sideways speed of y/20
-// toward the site's plane (y its offset, 20 s the closing time constant)
-// and null that too. The bias fades as y closes; a few degrees of yaw
-// spent while fast replaces a hover-and-translate at the bottom.
+// Retrograde, biased: pretend the ship owes a sideways speed of
+// y/tau_yaw toward the site's plane (y its offset) and null that too.
+// The bias fades as y closes; a few degrees of yaw spent while fast
+// replaces a hover-and-translate at the bottom.
 function braking_dir {
   local n is vcrs(ship:velocity:surface, up:vector):normalized.
-  return -(ship:velocity:surface - n * vdot(tgt:position, n) / 20).
+  return -(ship:velocity:surface - n * vdot(tgt:position, n) / tau_yaw).
 }
 lock steering to lookdirup(braking_dir(), ship:facing:topvector).
 lock throttle to f_cmd.
@@ -231,8 +237,11 @@ print "TERMINAL: from " + round(alt:radar) + " m.".
 local g0 is body:mu / body:radius ^ 2.
 local v_floor is 2.
 local h_pad is 5.              // the burn spends its speed to v_floor by here; the last h_pad is a gentle coast
-local a_lat_max is 0.3.        // cap on the free-fall lateral correction — an acceleration (m/s^2), so craft-free
 local tilt_max is 30.          // cap on tilt from plumb, degrees — the attitude margin kept to still stick the burn
+local a_lat_max is g0 * tan(tilt_max).  // cap on the free-fall lateral correction: what
+                               // hover-scale thrust tipped to the attitude margin delivers.
+                               // Derived, so craft- and body-free — the old hardcoded 0.3
+                               // was this number computed for Minmus and frozen.
 local f_idle is 0.05.          // free-fall idle threshold: terminal's own, not the solve's — below this the whisper is spent, not felt
 local lock a_dec to f_max * ship:availablethrust / ship:mass - g0.
 local lock v_sched to sqrt(2 * a_dec * max(0, alt:radar - h_pad)).
