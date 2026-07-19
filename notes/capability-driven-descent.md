@@ -340,6 +340,11 @@ orbit:apoapsis` reads the *global* `orbit`, not its own parameter.
    over the Great Flats, clearance at PDI was 2937 m and at −240 s up-range **2947 m**, a
    ten-metre margin over the flattest ground on the body. Tilt onto any relief and the coast
    binds first.
+   *Settled in code (2026-07-19): `plan_doi.ks` walks the placed ellipse from the DOI burn to
+   PDI (kepler's `orbit_at`/`geoposition_at`, ~200 ground-metres per step at periapsis speed,
+   no early-out — half an orbit of samples is cheap) and aborts when clearance drops below
+   `coast_clearance`, defaulting to `landing_height`. The number itself remains judgment; the
+   walk makes it enforced judgment.*
 2. **Does the sagitta argument hold in flight?** `turn_budget = 15°` assumes the law's command
    really does interpolate linearly between a leg's endpoint accelerations, as constant jerk
    says it should — but the law also feeds back on live state every tick, so the real command is

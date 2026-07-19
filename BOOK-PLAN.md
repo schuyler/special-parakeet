@@ -305,6 +305,56 @@ speculation, not planning.
 
 *Last updated: 2026-07-19*
 
+- **Done (2026-07-19, still later):** the coast rule, landed in `plan_doi.ks` just ahead of
+  its first flight (Schuyler testing the revised planner as this was written). A new
+  `=== THE COAST ===` section after the placement passes walks the placed ellipse from the
+  DOI burn to PDI — kepler's `orbit_at`/`geoposition_at` on `nd:orbit`, one sample per ~200
+  ground-metres at periapsis speed (`coast_dx`, a local accuracy bound like `pitch_tol`), no
+  early-out because half an orbit of samples is cheap at ipu 2000 — keeps the minimum of
+  ellipse-altitude over terrain, and aborts the plan if it comes under `coast_clearance`, a
+  new 7th parameter defaulting to `landing_height` (census 6 → 7; the price of certifying
+  the one stretch nothing checked, justified by open item 1's measured ten-metre Great Flats
+  margin). The minimum and where it fell — seconds before PDI, the open item's own
+  coordinate — join `doi_plan.log`. Check is near-exact, not a model check: the coast is on
+  rails pre-burn and kOS terrain is the game's own ground; residual risks are the 200 m
+  sample spacing and the burn's own periapsis slop. `optimize_descent_angle.ks`'s header and
+  `gamma_floor` comment updated (the coast is no longer "unwritten"/"the human's risk"; the
+  floor now exists to keep the survey from proposing plans the coast walk would refuse late).
+  Open item 1 annotated settled-in-code — the clearance number itself stays judgment.
+  **Unflown**, and first in line to fly.
+
+- **Done (2026-07-19, later):** `reference/original/optimize_descent_angle.ks` — piece 3's
+  front half, new. The terrain survey that stood behind gamma as "the human's judgment" in
+  `plan_doi.ks` now exists as code: walk the approach up-range from the site and take the
+  steepest ray any obstacle demands, `gamma = max arctan((terrain + margin − h_handoff)/x)`.
+  No search: Δv rises with gamma (the trend plan_doi's sweep prices), so the optimum is the
+  shallowest certified slope — "optimize" means "find the binding obstacle". Two scoping
+  decisions, both argued in the header: (1) the design note's survey-joins-the-fixed-point
+  coupling is deferred — it only bites on an inclined orbit, and under the stack's standing
+  equatorial assumption the track through the site is the site's own parallel, so the
+  survey is pure geography: reads nothing from the ship but the body, places no node, runs
+  before the parking orbit exists, and needs no third copy of the arc march. (2) The coast
+  clearance rule (open item 1) is explicitly NOT here — it is a property of the placed
+  ellipse, so it belongs in plan_doi's verdict (walking `nd:orbit` before declaring
+  victory), which is where it should land next; until then the coast is still the human's
+  risk, and the script's header says so. Simplified the same session on a
+  derive-don't-supply review: `max_terrain_height` deleted — its only job was ending the
+  walk early, and the quarter-body span bound first on every body flown anyway (a 1° ray
+  doesn't top Minmus's 5725 m until ~330 km out, most of the way around), so the walk just
+  spans a derived quarter of the body and every parameter now has a default;
+  `terrain_margin` now defaults to `landing_height` (the same benefit of the doubt at the
+  site and up-range — one judgment, not two); reporting strides derived from the span
+  (~50 profile lines, ~5 progress notes on any body). Remaining judgments, each argued in
+  place: `gamma_floor` (1°, named for what it is — the unwritten coast rule's understudy)
+  and `dx` (open item 8's knob, 100 m); `landing_height` stays because it is the seam.
+  (Both this default and plan_doi's `coast_clearance` resolve negative-means-`landing_height`
+  in code rather than by a cross-parameter default expression — an idiom this repo has never
+  proven in kOS, and no night before a flight is the time to prove it.) Witness:
+  `gamma_survey.log` — gamma, the forcing obstacle, walk stats, and a decimated corridor
+  profile (x, terrain, ray) for plotting. **Unflown** — but unlike the flight scripts it
+  is dry-runnable: it only reads terrain, so a bridge run from any save on or around
+  Minmus exercises it end to end.
+
 - **Done (2026-07-19):** `reference/original/plan_doi.ks` revised in place to plan for
   `powered_descent_min.ks` instead of the table-flying controller. **Flight news first**:
   the min rendition has now flown — pinpoint Minmus landings at TWR ~37 and the same craft
