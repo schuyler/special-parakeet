@@ -4,8 +4,8 @@ parameter new_periapsis is orbit:apoapsis.
 
 local apo to orbit:apoapsis.
 
-local v0 to orbital_speed(orbit, apo).
-local v1 to orbital_speed(orbit, apo, apo, new_periapsis).
+local v0 to orbital_speed_v1(orbit, apo).
+local v1 to orbital_speed_v1(orbit, apo, apo, new_periapsis).
 
 local t to time_to_altitude(orbit, apo).
 // print "Apoapsis will be in " + t:minute + ":" + t:second.

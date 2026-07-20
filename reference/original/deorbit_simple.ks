@@ -13,7 +13,7 @@ function deorbit_speed {
 
   // print "alt_ = " + round(altitude) + " at " + t.
   // what if this really is the apoapsis?!?!
-  return orbital_speed(ob, alt_, ob:periapsis, target).
+  return orbital_speed_v1(ob, alt_, ob:periapsis, target).
 }
 
 local burn_t to timestamp() + time_to_meridian(ship:orbit, burn_lng).
@@ -21,7 +21,7 @@ local burn_t to timestamp() + time_to_meridian(ship:orbit, burn_lng).
 print "Starting deorbit burn at " + burn_lng + "º in " + round(burn_t:seconds) + "s.".
 
 local ob to orbit_at(ship:orbit, burn_t).
-local s0 to orbital_speed(ob).
+local s0 to orbital_speed_v1(ob).
 local s1 to deorbit_speed(ob, burn_t, target_periapsis).
 local nd to node(burn_t, 0, 0, s1 - s0).
 add(nd).

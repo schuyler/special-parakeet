@@ -90,7 +90,7 @@ function orbital_height {
 }
 
 // vis-viva equation
-function orbital_speed {
+function orbital_speed_v1 {
   parameter orbit_ is ship:orbit.
   parameter altitude_ is orbital_height(orbit_).
   parameter apo is orbit:apoapsis.

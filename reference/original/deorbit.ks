@@ -28,7 +28,7 @@ function deorbit_speed {
 
   // print "alt_ = " + round(altitude) + " at " + t.
   // what if this really is the apoapsis?!?!
-  return orbital_speed(ob, alt_, alt_, target).
+  return orbital_speed_v1(ob, alt_, alt_, target).
 }
 
 function deorbit_trajectory {
@@ -121,7 +121,7 @@ function program_deorbit_burn {
   // Take the best trajectory and set up the node
   local trajectory to deorbit_trajectory(ob, deorbit_t, target_periapsis).
   local v1 to deorbit_speed(ob, deorbit_t, target_periapsis).
-  local v0 to orbital_speed(orbit_at(ob, deorbit_t)).
+  local v0 to orbital_speed_v1(orbit_at(ob, deorbit_t)).
 
   // print v1 + " > " + v0.
 

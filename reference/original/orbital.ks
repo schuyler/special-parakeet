@@ -77,7 +77,7 @@ function time_since_periapsis {
 }
 
 // vis-viva equation
-function orbital_speed {
+function orbital_speed_v1 {
   parameter orbit_ is ship:orbit.
   parameter altitude_ is altitude_at(orbit_).
   // could be an orbit with different parameters

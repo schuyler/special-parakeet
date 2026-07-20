@@ -5,7 +5,7 @@ until false {
   clearscreen.
   local t to timestamp().
 
-  local s to orbital_speed(orbit, alt_).
+  local s to orbital_speed_v1(orbit, alt_).
   print "Orbital speed: " + round(s, 1) + " m/s".
 
   local alt_ to altitude_at(orbit, t).

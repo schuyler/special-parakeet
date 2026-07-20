@@ -52,8 +52,8 @@ function buildApproachNode {
     parameter t.
     local posAtT is positionat(ship, t).
     local initialAltitude is body:altitudeof(posAtT).
-    local targetSpeed is orbital_speed(ship:orbit, initialAltitude, targetAltitude, initialAltitude).
-    local initialSpeed is orbital_speed(ship:orbit, initialAltitude).
+    local targetSpeed is orbital_speed_v1(ship:orbit, initialAltitude, targetAltitude, initialAltitude).
+    local initialSpeed is orbital_speed_v1(ship:orbit, initialAltitude).
     return node(t, 0, 0, targetSpeed - initialSpeed).
   }.
 
