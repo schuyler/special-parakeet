@@ -13,7 +13,25 @@ set warp to 0.
 sas off.
 set pitch to 20.
 
-lock hdg to srfprograde + r(pitch, 0, 0).
+// Compass azimuth, degrees clockwise from north, of a vector v_ projected
+// onto the local horizontal plane. north and up are the local tangent-north
+// and radial-out unit vectors; their cross product points east. arctan2 of
+// the east and north components of v_ is its heading.
+function compass_for {
+  parameter v_.
+  local east is vcrs(ship:up:vector, ship:north:vector).
+  local az is arctan2(vdot(east, v_), vdot(ship:north:vector, v_)).
+  if az < 0 { return az + 360. }
+  return az.
+}
+
+// Hold the nose `pitch` degrees above the horizon along the ground track,
+// wings level (roll 0, the wing axis parallel to the ground). heading()
+// builds this from the surface-velocity azimuth and the horizon, so it is
+// independent of orbit inclination. The old srfprograde + r(...) rode
+// srfprograde's own roll reference, which tumbles with inclination and
+// gimbal-locks near polar orbits.
+lock hdg to heading(compass_for(srfprograde:vector), pitch, 0).
 lock steering to hdg.
 wait until steering_aligned_to(hdg:vector).
 
@@ -45,7 +63,7 @@ wait until steering_aligned_to(hdg:vector).
 set warp to 2.
 
 print "Waiting for aerodynamic control.".
-when airspeed < 800 {
+when airspeed < 800 then {
   print "Flight controls unlocked.".
   set warp to 0.
   unlock steering.
