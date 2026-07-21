@@ -13,7 +13,10 @@ function separation_at {
 }
 
 function closest_approach {
-  return minimize(separation_at@, 0, ship:orbit:period / 2, 0.1).
+  // Full period, not period/2: after a transfer burn the encounter sits at
+  // half the period, right on the old window's boundary. The scan handles
+  // the multiple local dips a wider window can contain.
+  return minimize_scan(separation_at@, 0, ship:orbit:period, 0.1).
 }
 
 function relative_velocity_at {

@@ -24,6 +24,32 @@ function minimize {
   return (a + b) / 2.
 }
 
+// Minimize func over [a, b] without assuming it's unimodal there, which
+// bare ternary search does: coarse-scan the interval, bracket the best
+// sample, then hand the bracket to minimize. Guards against a minimum
+// sitting on (or just past) a boundary and against multiple local dips.
+function minimize_scan {
+  parameter func, a, b.
+  parameter epsilon is 0.2.
+  parameter samples is 24.
+
+  local step is (b - a) / samples.
+  local best_i is 0.
+  local best_f is func(a).
+  local i is 1.
+  until i > samples {
+    local f is func(a + i * step).
+    if f < best_f {
+      set best_f to f.
+      set best_i to i.
+    }
+    set i to i + 1.
+  }
+  local lo is a + max(0, best_i - 1) * step.
+  local hi is a + min(samples, best_i + 1) * step.
+  return minimize(func, lo, hi, epsilon).
+}
+
 // Find the current engine ISP
 function engine_isp {
   local eng_list to list().
