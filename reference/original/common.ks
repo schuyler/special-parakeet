@@ -37,6 +37,31 @@ function engine_isp {
   return 0.
 }
 
+// Find a root of func on [a, b] by bisection. Unlike find_zero_crossing
+// below, this makes no assumptions about which way the function crosses;
+// it only requires that func(a) and func(b) have opposite signs.
+function find_root {
+  parameter func, a, b.
+  parameter epsilon is 0.2.
+  parameter nmax is 1000.
+
+  local fa is func(a).
+  local n is 0.
+  until n > nmax or abs(b - a) < epsilon {
+    local mid is (a + b) / 2.
+    local fmid is func(mid).
+    if (fa < 0) = (fmid < 0) {
+      // same sign: the root is in the right half
+      set a to mid.
+      set fa to fmid.
+    } else {
+      set b to mid.
+    }
+    set n to n + 1.
+  }
+  return (a + b) / 2.
+}
+
 // Find the zero crossing of a function
 function find_zero_crossing {
   parameter func, a, b.
