@@ -2,9 +2,10 @@
 
 This repository hosts:
 
-1. **Reference material to mine** — `reference/core/`, `reference/landing_v2/`,
-   `reference/wip/`, `reference/script/` are main_v2's draft library. Frozen: read them,
-   don't edit them.
+1. **Reference material to mine** — `reference/landing_v2/`, `reference/wip/`,
+   `reference/script/` are main_v2's draft library. Frozen: read them, don't edit them.
+   `reference/core/` is different: it's the shared kOS library the descent scripts
+   actually run, and it is **not frozen** — edit it when the work calls for it.
 2. **Working scripts** — `reference/original/` holds Schuyler's own kOS scripts (formerly
    root `*.ks` files). These are **not frozen**. They are spikes he flies in the game, and
    `powered_landing.ks` is under active development. Edit them when the work calls for it.

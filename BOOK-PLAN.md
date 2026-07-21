@@ -106,14 +106,17 @@ part structure and mission milestones.
   are introduced by chapter; appendix B tracks which chapter introduced what.
 - `missions/chNN/` — per-chapter mission scripts (the scripts the reader writes/runs in that
   chapter, at that chapter's level of sophistication).
-- `reference/` — **frozen source material; do not edit, only mine.**
+- `reference/` — source material for the book; edit policy varies by subtree:
   - `reference/original/` — Schuyler's original working kOS scripts (formerly the root
-    `*.ks` files). The book code is a fresh, pedagogically-ordered rebuild from these.
-  - `reference/core/`, `reference/landing_v2/`, `reference/wip/`, `reference/script/` —
+    `*.ks` files). **Live, not frozen** — spikes he flies in the game, under active
+    development. The book code is a fresh, pedagogically-ordered rebuild from these.
+  - `reference/core/` — main_v2's shared kOS library, run by the active descent
+    scripts. **Live, not frozen** — edit when the work calls for it.
+  - `reference/landing_v2/`, `reference/wip/`, `reference/script/` —
     main_v2's draft library: Schuyler's first pass at Keplerian mechanics and precision
     landing with Claude's help. Treated as a draft of the trail the book now blazes
-    deliberately; mined, never edited. Full commit history for all reference material
-    lives on the `main` and `main_v2` branches.
+    deliberately; **frozen — mined, never edited.** Full commit history for all
+    reference material lives on the `main` and `main_v2` branches.
   - `reference/variants/` — divergent versions of scripts that were independently modified
     on other branches: `next.ks` is the tutorial-branch refinement (auto-staging block
     removed, finer maneuver control); `land_at_periapsis.ks` is main's shorter
