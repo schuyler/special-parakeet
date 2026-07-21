@@ -112,7 +112,5 @@ if not hastarget {
     // post-burn plane before we commit any fuel to it.
     local check is vang(orbit_normal(ship, nd:time + 60), orbit_normal(target)).
     print "Predicted after burn: " + round(check, 3) + " deg.".
-    run next.
-    print "Relative inclination now: " + round(relative_inclination(), 3) + " deg.".
   }
 }
