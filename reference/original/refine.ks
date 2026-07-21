@@ -1,6 +1,6 @@
 clearscreen.
 
-// === NODE POLISH ===
+// === NODE REFINEMENT ===
 //
 // Refine the next maneuver node to minimize the predicted closest approach
 // to the target. Works on any node — a departure from intercept.ks, a
@@ -51,7 +51,7 @@ function tune {
 if not hastarget {
   print "No target set.".
 } else if not hasnode {
-  print "No node to polish.".
+  print "No node to refine.".
 } else {
   set nd to nextnode.
   set t_ca to minimize_scan(separation_at@, nd:eta, nd:eta + nd:orbit:period, 1).
@@ -61,7 +61,7 @@ if not hastarget {
     list({ return nd:prograde. },  { parameter x. set nd:prograde to x. },  10),
     list({ return nd:radialout. }, { parameter x. set nd:radialout to x. }, 10)).
 
-  print "=== POLISH ===".
+  print "=== REFINE ===".
   print "Initial closest approach: " + round(closest_sep()) + " m.".
 
   local round_i is 1.

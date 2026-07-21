@@ -135,8 +135,8 @@ later, better draft; the book can show the progression where instructive.
 | `common.ks` (`execute_node`, `node_from_velocity`), `circularize.ks` | 6 | node execution incl. coordinate-frame rotation |
 | `set_periapsis.ks`, `move_periapsis.ks` | 7 | |
 | `set_inclination.ks` | 7 | plane-change maneuver; fits ch. 7 (orbital transfers) rather than ch. 9 (rendezvous) because inclination change is a purely Hohmann-adjacent maneuver with no phasing |
-| `kepler.ks`, `orbital.ks` (anomalies) | 8 | `kepler.ks` header ("don't need it, see orbit.ks") is itself a good pedagogical beat: derive by hand, then learn what the API gives you |
-| `match_planes.ks`, `intercept.ks` (transfer planner), `polish.ks`, `rendezvous.ks` (the closest-approach velocity match, formerly named `intercept.ks`), `next.ks`, `wait_for_launch.ks` | 9 | the full pipeline: match planes → plan intercept → polish node → fly → rendezvous burn |
+| `kepler.ks`, `orbital.ks` (anomalies) | 8 | `kepler.ks`'s original header quip ("don't need it, see orbit.ks" — since replaced with an accurate note; see git history) is itself a good pedagogical beat: derive by hand, then learn what the API gives you |
+| `match_planes.ks`, `intercept.ks` (transfer planner), `refine.ks`, `rendezvous.ks` (the closest-approach velocity match, formerly named `intercept.ks`), `next.ks`, `wait_for_launch.ks` | 9 | the full pipeline: match planes → plan intercept → refine node → fly → rendezvous burn |
 | `dock.ks`, `dock2.ks`, `fuelxfer.ks` | 10 | |
 | `deorbit.ks`, `deorbit_simple.ks`, `deorbit_node.ks`, `drop_periapsis.ks`, `landing.ks`, `land_at_periapsis.ks`, `common.ks` (`time_to_surface`, `landing_time` Newton iteration) | 11–12 | the terrain-height Newton iteration is exactly the "numerical methods where closed form runs out" lesson |
 | `predict_landing.ks` | 11–12 | early landing-site prediction; compare to `reference/landing_v2/` for the improved approach |

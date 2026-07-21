@@ -1,8 +1,12 @@
-// Bunch of Keplerian math.
+// Keplerian math, translated from https://physics.stackexchange.com/a/333897
 //
-// Translated all this from https://physics.stackexchange.com/a/333897
-//
-// But you know what? Don't need it. See orbit.ks instead
+// Unused: nothing runs this file. The kepler.ks the descent scripts run is
+// the separate reference/core/kepler.ks, and the anomaly machinery that
+// actually gets used here in original/ lives in orbital.ks. The underscore
+// rename was also never finished — _time_since_periapsis and
+// _time_to_altitude still call the old un-prefixed names, so they would
+// crash if anything did call them. Kept for the chapter 8 story: derive it
+// by hand, then learn what the API gives you.
 
 function _eccentricity {
   parameter apo, peri.

@@ -22,7 +22,7 @@ clearscreen.
 //           loiter n laps on a detuned-period orbit tangent at the burn
 //           point, sized so we return exactly when the target arrives.
 //
-// This script only creates the departure node. Then: run polish (refine
+// This script only creates the departure node. Then: run refine (tune
 // the node against the real predicted miss), run next (fly it), run
 // rendezvous (plan the match burn at closest approach).
 
@@ -84,7 +84,7 @@ print "=== INTERCEPT PLAN ===".
 
 if ship:orbit:eccentricity > 0.02 {
   print "WARNING: orbit e=" + round(ship:orbit:eccentricity, 3)
-    + "; the seed assumes circular. Expect polish to work harder.".
+    + "; the seed assumes circular. Expect refine to work harder.".
 }
 local rel_inc is vang(orbit_normal(ship), orbit_normal(target)).
 if rel_inc > 0.5 {
@@ -229,5 +229,5 @@ if in_bound:length = 0 {
   print "Node added: " + round(winner["dv_dep"], 1) + " m/s prograde in "
     + round(winner["t_dep"] - time:seconds) + "s.".
   print "Estimated match burn at arrival: " + round(winner["dv_arr"], 1) + " m/s.".
-  print "Next: run polish. run next. run rendezvous.".
+  print "Next: run refine. run next. run rendezvous.".
 }
