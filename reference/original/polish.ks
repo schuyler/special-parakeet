@@ -3,8 +3,8 @@ clearscreen.
 // === NODE POLISH ===
 //
 // Refine the next maneuver node to minimize the predicted closest approach
-// to the target. Works on any node — a transfer departure from transfer.ks,
-// a phasing entry, or a small mid-course correction node added by hand —
+// to the target. Works on any node — a departure from intercept.ks, a
+// phasing entry, or a small mid-course correction node added by hand —
 // because positionat/velocityat honor planned nodes, so the objective is
 // simply "predicted separation with this candidate node in the flight
 // plan". Coordinate descent over node time, prograde, and radial, with
@@ -76,5 +76,5 @@ if not hastarget {
   }
 
   print "Final: " + round(closest_sep()) + " m, " + round(t_ca / 60, 1) + " min from now.".
-  print "Next: run next. run intercept.".
+  print "Next: run next. run rendezvous.".
 }
