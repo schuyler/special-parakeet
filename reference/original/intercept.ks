@@ -44,32 +44,7 @@ if body:atm:exists {
   set floor_r to body:radius + body:atm:height + safe_margin.
 }
 
-function visviva {
-  parameter r_, a_.
-  return sqrt(mu * (2 / r_ - 1 / a_)).
-}
-
-// Angle from our position at time t to a body-centered direction, measured
-// forward along our direction of motion, [0, 360). Handedness-free: built
-// from dot products against our own radial and prograde directions.
-function angle_ahead {
-  parameter dir_.
-  parameter t is time:seconds.
-  local rdir is (positionat(ship, t) - body:position):normalized.
-  local vdir is velocityat(ship, t):orbit:normalized.
-  local ang is arctan2(vdot(dir_:normalized, vdir), vdot(dir_:normalized, rdir)).
-  if ang < 0 {
-    set ang to ang + 360.
-  }
-  return ang.
-}
-
-function time_to_apsis {
-  parameter ob.
-  parameter aps_m. // mean anomaly of the apsis: 0 = pe, 180 = ap
-  local m is mean_anomaly_at_t(ob).
-  return mod(aps_m - m + 360, 360) / 360 * ob:period.
-}
+// visviva, angle_ahead, and time_to_apsis come from orbital.ks.
 
 function describe {
   parameter c.
@@ -86,7 +61,7 @@ if ship:orbit:eccentricity > 0.02 {
   print "WARNING: orbit e=" + round(ship:orbit:eccentricity, 3)
     + "; the seed assumes circular. Expect refine to work harder.".
 }
-local rel_inc is vang(orbit_normal(ship), orbit_normal(target)).
+local rel_inc is relative_inclination().
 if rel_inc > 0.5 {
   print "WARNING: planes off by " + round(rel_inc, 2) + " deg; run match_planes first.".
 }

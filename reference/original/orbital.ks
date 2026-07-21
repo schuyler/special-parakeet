@@ -87,7 +87,15 @@ function time_since_periapsis {
   return timespan(ob:period * m / 360).
 }
 
-// vis-viva equation
+// vis-viva equation in its natural variables: speed at radius r_ on an
+// orbit with semi-major axis a_. Everything else is a repackaging of this.
+function visviva {
+  parameter r_, a_.
+  parameter mu is ship:body:mu.
+  return sqrt(mu * ((2 / r_) - (1 / a_))).
+}
+
+// vis-viva, packaged as speed at an altitude on an orbit given by apo/peri
 function orbital_speed_v1 {
   parameter orbit_ is ship:orbit.
   parameter altitude_ is altitude_at(orbit_).
@@ -96,10 +104,53 @@ function orbital_speed_v1 {
   parameter peri is orbit_:periapsis.
 
   local body_ to orbit_:body.
-  local g to body_:mu.
-  local r_ to body_:radius + altitude_.
-  local a to body_:radius + (apo + peri) / 2.
-  return sqrt(g * ((2 / r_) - (1 / a))).
+  return visviva(body_:radius + altitude_,
+                 body_:radius + (apo + peri) / 2,
+                 body_:mu).
+}
+
+// Time until an orbit next passes the given apsis: 0 = periapsis, 180 =
+// apoapsis (those being the apsides' mean anomalies).
+function time_to_apsis {
+  parameter ob.
+  parameter aps_m.
+  local m is mean_anomaly_at_t(ob).
+  return mod(aps_m - m + 360, 360) / 360 * ob:period.
+}
+
+// Angle from our position at time t to a body-centered direction, measured
+// forward along our direction of motion, [0, 360). Handedness-free: built
+// from dot products against our own radial and prograde directions.
+function angle_ahead {
+  parameter dir_.
+  parameter t is time:seconds.
+  local rdir is (positionat(ship, t) - body:position):normalized.
+  local vdir is velocityat(ship, t):orbit:normalized.
+  local ang is arctan2(vdot(dir_:normalized, vdir), vdot(dir_:normalized, rdir)).
+  if ang < 0 {
+    set ang to ang + 360.
+  }
+  return ang.
+}
+
+// --- TARGET-RELATIVE PREDICTION (these need a target set)
+
+function relative_inclination {
+  parameter t is time:seconds.
+  return vang(orbit_normal(ship, t), orbit_normal(target, t)).
+}
+
+// Ship-to-target distance, t seconds from now. Honors planned maneuver
+// nodes, so this predicts the flight plan, not just the current orbit.
+function separation_at {
+  parameter t.
+  return (positionat(target, time:seconds + t) - positionat(ship, time:seconds + t)):mag.
+}
+
+// Target's velocity relative to ours, t seconds from now.
+function relative_velocity_at {
+  parameter t.
+  return velocityat(target, time:seconds + t):orbit - velocityat(ship, time:seconds + t):orbit.
 }
 
 // --- ALTITUDE COMPUTATION

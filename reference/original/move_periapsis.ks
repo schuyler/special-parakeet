@@ -4,6 +4,7 @@ parameter lon is -6.9937.
 parameter altitudeMargin is 3000.
 
 run "common".
+run "orbital".  // orbital_speed_v1
 
 // Function to find the time when the ship is closest to the given ground point
 function closestApproachTime {

@@ -107,20 +107,6 @@ function orbital_height {
   return orbit_:body:altitudeof(orbit_:position).
 }
 
-// vis-viva equation
-function orbital_speed_v1 {
-  parameter orbit_ is ship:orbit.
-  parameter altitude_ is orbital_height(orbit_).
-  parameter apo is orbit:apoapsis.
-  parameter peri is orbit:periapsis.
-
-  local body_ to orbit_:body.
-  local g to body_:mu.
-  local r_ to body_:radius + altitude_.
-  local a to (2 * body_:radius + apo + peri) / 2.
-  return sqrt(g * ((2 / r_) - (1 / a))).
-}
-
 // Compute maneuver node from desired delta-V vector
 function node_from_velocity {
   parameter dv.

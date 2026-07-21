@@ -16,14 +16,10 @@ clearscreen.
 parameter rounds is 3.
 
 run common.
+run orbital.  // separation_at
 
 local nd is 0.
 local t_ca is 0.
-
-function separation_at {
-  parameter t.
-  return (positionat(target, time:seconds + t) - positionat(ship, time:seconds + t)):mag.
-}
 
 // The encounter time moves as the node is tuned, but only by seconds per
 // probe, so track it between evaluations: one full-window scan up front,

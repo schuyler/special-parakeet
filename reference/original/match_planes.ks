@@ -9,12 +9,7 @@ run orbital.
 // inclination, match the plane of the current target. Burn at the cheaper
 // of the two relative node crossings (the one where we're moving slowest).
 
-// orbit_normal comes from orbital.ks.
-
-function relative_inclination {
-  parameter t is time:seconds.
-  return vang(orbit_normal(ship, t), orbit_normal(target, t)).
-}
+// orbit_normal and relative_inclination come from orbital.ks.
 
 // Signed distance from the target's orbital plane, dt seconds from now.
 // Its zero crossings are the relative ascending and descending nodes.
