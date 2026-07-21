@@ -2,6 +2,17 @@
 
 // --- ORBITAL COMPUTATION
 
+// The orbit normal. In kOS's left-handed frame this points the opposite
+// way from the right-handed textbook convention, but as long as every
+// normal comes from this function, angles between them come out right.
+function orbit_normal {
+  parameter obj is ship.
+  parameter t is time:seconds.
+  local r_ is positionat(obj, t) - obj:body:position.
+  local v_ is velocityat(obj, t):orbit.
+  return vcrs(v_, r_):normalized.
+}
+
 // How far have we come around the orbit in angular units at time t, since last
 // periapsis?
 //

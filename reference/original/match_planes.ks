@@ -1,6 +1,7 @@
 clearscreen.
 
 run common.
+run orbital.
 
 // === PLANE MATCHING ===
 //
@@ -8,16 +9,7 @@ run common.
 // inclination, match the plane of the current target. Burn at the cheaper
 // of the two relative node crossings (the one where we're moving slowest).
 
-// The orbit normal. In kOS's left-handed frame this points the opposite
-// way from the right-handed textbook convention, but both ship and target
-// get the same treatment, so angles between normals come out right.
-function orbit_normal {
-  parameter obj is ship.
-  parameter t is time:seconds.
-  local r_ is positionat(obj, t) - body:position.
-  local v_ is velocityat(obj, t):orbit.
-  return vcrs(v_, r_):normalized.
-}
+// orbit_normal comes from orbital.ks.
 
 function relative_inclination {
   parameter t is time:seconds.
