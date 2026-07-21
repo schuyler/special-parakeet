@@ -1,5 +1,10 @@
 clearscreen.
 
+// How many revolutions of our orbit to search for the closest approach.
+// One is right after a transfer burn; more lets the encounter fall on a
+// later revolution, e.g. while a phasing orbit is still closing the gap.
+parameter orbits is 1.
+
 run common.
 
 // === INTERCEPT CALCULATION ===
@@ -13,10 +18,11 @@ function separation_at {
 }
 
 function closest_approach {
-  // Full period, not period/2: after a transfer burn the encounter sits at
+  // Full periods, not period/2: after a transfer burn the encounter sits at
   // half the period, right on the old window's boundary. The scan handles
-  // the multiple local dips a wider window can contain.
-  return minimize_scan(separation_at@, 0, ship:orbit:period, 0.1).
+  // the multiple local dips a wider window contains; scale the sample count
+  // with the window so the grid stays dense enough to catch one dip per rev.
+  return minimize_scan(separation_at@, 0, ship:orbit:period * orbits, 0.1, 24 * orbits).
 }
 
 function relative_velocity_at {
