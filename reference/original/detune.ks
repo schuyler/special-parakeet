@@ -43,10 +43,14 @@ clearscreen.
 
 parameter max_wait is 0.    // latest arrival, s from now; 0 = default
 parameter safe_margin is 0. // extra clearance over the body's safe radius, m
-parameter fix_tol is 25.    // natural miss at/below this: no burn, m/s
+parameter fix_tol is -1.    // natural miss at/below this: no burn, m/s; -1 = policy
 
 run common.
 run orbital.
+
+if fix_tol < 0 {
+  set fix_tol to plan_fix_tol.
+}
 
 local mu is body:mu.
 local r1 is ship:orbit:semimajoraxis.
@@ -74,28 +78,23 @@ function describe {
 
 print "=== DETUNE PLAN (step 1: fix the clock) ===".
 
-if ship:orbit:eccentricity > 0.02 {
+if ship:orbit:eccentricity > plan_e_circular {
   print "WARNING: orbit e=" + round(ship:orbit:eccentricity, 3)
     + "; the seed assumes circular. Expect refine to work harder.".
 }
 local rel_inc is relative_inclination().
-if rel_inc > 0.5 {
+if rel_inc > plan_inc_warn {
   print "WARNING: planes off by " + round(rel_inc, 2) + " deg; run match_planes first.".
 }
 
 if max_wait = 0 {
-  local dperiod is abs(t1 - t_tgt).
-  if dperiod < t1 * 0.01 {
-    set max_wait to 30 * t_tgt.  // co-orbital: no synodic beat to lean on
-  } else {
-    set max_wait to min(30 * t_tgt, max(3 * t_tgt, 2 * t1 * t_tgt / dperiod)).
-  }
+  set max_wait to default_max_wait(t1, t_tgt).
   print "No max_wait given; defaulting to " + round(max_wait / 60) + " min.".
 }
 
 local horizon is time:seconds + max_wait.
 // Also look past the bound, to tell the user what patience would buy.
-local hint_horizon is time:seconds + 3 * max_wait.
+local hint_horizon is time:seconds + plan_hint_factor * max_wait.
 
 local candidates is list().
 local best_natural is 0.
@@ -118,7 +117,7 @@ for aps in list(list("pe", 0, body:radius + target:orbit:periapsis),
   // the burn happens there so the detuned orbit returns there.
   local ang is mod(angle_ahead(aps_dir) - 180 + 360, 360).
   local t_cross is time:seconds + ang / 360 * t1.
-  if t_cross < time:seconds + 120 {
+  if t_cross < time:seconds + plan_burn_lead {
     set t_cross to t_cross + t1.
   }
 
@@ -129,7 +128,7 @@ for aps in list(list("pe", 0, body:radius + target:orbit:periapsis),
 
     // The no-burn miss at this window, for the collapse check: if some
     // in-bound window already lines up, detuning is pointless.
-    if t_dep > time:seconds + 60 and t_arr <= horizon {
+    if t_dep > time:seconds + plan_min_lead and t_arr <= horizon {
       local delta is abs(angle_ahead(aps_dir, t_dep) - 180).
       local dv_fix is r2 * delta * constant:degtorad / max(1, t_h / 2).
       if not has_natural or dv_fix < best_natural["dv_fix"] {
@@ -212,7 +211,7 @@ if has_natural and best_natural["dv_fix"] <= fix_tol {
       set shown to shown + 1.
     }
 
-    if has_out and best_out["total"] < 0.8 * winner["total"] {
+    if has_out and best_out["total"] < plan_hint_better * winner["total"] {
       print "A larger bound would help: " + describe(best_out).
     }
 

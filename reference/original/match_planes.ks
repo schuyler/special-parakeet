@@ -90,7 +90,7 @@ if not hastarget {
   }
   local d_inc is relative_inclination().
   print "Relative inclination: " + round(d_inc, 3) + " deg.".
-  if d_inc < 0.05 {
+  if d_inc < plan_inc_matched {
     print "Planes already matched.".
   } else {
     local nd is match_planes().

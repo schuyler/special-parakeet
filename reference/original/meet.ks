@@ -32,7 +32,7 @@ parameter dv_budget is 1000. // m/s: for the burns still ahead
 run common.
 run orbital.
 
-local approach_tol is 2000.  // "the plan meets the target", m (transfer.ks's default)
+local approach_tol is plan_approach_tol. // same gate transfer.ks uses
 local spent is 0.
 
 // Fly the next node now, unless it busts the budget or the wait outruns
@@ -84,7 +84,7 @@ function main {
   // are spent or whose time has passed, then fly whatever real one is
   // still pending before planning anything new.
   local swept is 0.
-  until not hasnode or (nextnode:deltav:mag >= 0.2 and nextnode:eta > 0) {
+  until not hasnode or (nextnode:deltav:mag >= plan_spent_dv and nextnode:eta > 0) {
     remove nextnode.
     wait 0.
     set swept to swept + 1.
@@ -104,7 +104,7 @@ function main {
   local ca is closest_approach(0, ship:orbit:period + target:orbit:period, 96).
   if ca["dist"] > approach_tol {
 
-    // Step 0: planes. Collapses below 0.05 deg.
+    // Step 0: planes. Collapses below plan_inc_matched.
     run match_planes.
     if hasnode {
       if not fly_gate("the plane match") { return. }
@@ -125,14 +125,15 @@ function main {
     if dt_win > patience * 60 {
       print "PAUSE: the transfer window opens in " + round(dt_win / 60, 1)
         + " min — past patience (" + patience + " min).".
-      print "Set an alarm for UT " + round(detune_t_dep - 120)
-        + " (window minus 2 min), then `run meet.` to resume.".
+      print "Set an alarm for UT " + round(detune_t_dep - plan_burn_lead)
+        + " (window minus " + round(plan_burn_lead / 60, 1)
+        + " min), then `run meet.` to resume.".
       return.
     }
-    if dt_win > 180 {
+    if dt_win > plan_burn_lead + plan_min_lead {
       print "Warping to the transfer window.".
-      warpto(detune_t_dep - 120).
-      wait until time:seconds >= detune_t_dep - 120.
+      warpto(detune_t_dep - plan_burn_lead).
+      wait until time:seconds >= detune_t_dep - plan_burn_lead.
     }
 
     // Step 3: the geometry, plus polish. When transfer collapses

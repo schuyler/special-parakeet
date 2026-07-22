@@ -4,10 +4,14 @@ clearscreen.
 // One is right after a transfer burn; more lets the encounter fall on a
 // later revolution, e.g. while a phasing orbit is still closing the gap.
 parameter orbits is 1.
-parameter min_dv is 0.5. // relative speed at/below this: matched, no node
+parameter min_dv is -1. // relative speed at/below this: matched, no node; -1 = policy
 
 run common.
 run orbital.  // closest_approach, relative_velocity_at
+
+if min_dv < 0 {
+  set min_dv to plan_matched_dv.
+}
 
 // === RENDEZVOUS (step 4 of 4) ===
 //

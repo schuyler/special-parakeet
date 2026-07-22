@@ -41,11 +41,15 @@ clearscreen.
 // next (fly it), run rendezvous (plan the match burn at closest approach).
 
 parameter aps_pick is "auto".   // "pe", "ap", or auto = cheaper of the two
-parameter approach_tol is 2000. // skip if plan already meets this; warn if the new node misses it, m
+parameter approach_tol is -1.   // skip if plan already meets this; warn if the new node misses it, m; -1 = policy
 parameter tol_coradial is 0.01. // |r1-r2|/r1 at/below this: collapsed
 
 run common.
 run orbital.
+
+if approach_tol < 0 {
+  set approach_tol to plan_approach_tol.
+}
 
 local mu is body:mu.
 local r1 is ship:orbit:semimajoraxis.
@@ -58,12 +62,12 @@ local a_tgt is target:orbit:semimajoraxis.
 
 print "=== TRANSFER PLAN (step 3: fix the geometry) ===".
 
-if ship:orbit:eccentricity > 0.02 {
+if ship:orbit:eccentricity > plan_e_circular {
   print "WARNING: orbit e=" + round(ship:orbit:eccentricity, 3)
     + "; departure timing assumes near-circular.".
 }
 local rel_inc is relative_inclination().
-if rel_inc > 0.5 {
+if rel_inc > plan_inc_warn {
   print "WARNING: planes off by " + round(rel_inc, 2) + " deg; run match_planes first.".
 }
 
@@ -132,7 +136,7 @@ if ca0["dist"] <= approach_tol {
     // so a slightly eccentric loiter orbit hands over cleanly.
     local ang is mod(angle_ahead(chosen["dir"]) - 180 + 360, 360).
     local t_dep is time:seconds + ang / 360 * t_ship.
-    if t_dep < time:seconds + 60 {
+    if t_dep < time:seconds + plan_min_lead {
       set t_dep to t_dep + t_ship.
     }
 

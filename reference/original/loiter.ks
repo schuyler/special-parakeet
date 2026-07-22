@@ -27,10 +27,14 @@ clearscreen.
 // the manufactured window line up.
 
 parameter max_wait is 0. // latest acceptable arrival, s from now; 0 = default
-parameter fix_tol is 25. // est. correction at/below this: just wait, m/s
+parameter fix_tol is -1. // est. correction at/below this: just wait, m/s; -1 = policy
 
 run common.
 run orbital.
+
+if fix_tol < 0 {
+  set fix_tol to plan_fix_tol.
+}
 
 local mu is body:mu.
 local r1 is ship:orbit:semimajoraxis.
@@ -49,28 +53,23 @@ function describe {
 
 print "=== LOITER REPORT (step 2: count laps) ===".
 
-if ship:orbit:eccentricity > 0.02 {
+if ship:orbit:eccentricity > plan_e_circular {
   print "WARNING: orbit e=" + round(ship:orbit:eccentricity, 3)
     + "; window timing assumes near-circular.".
 }
 local rel_inc is relative_inclination().
-if rel_inc > 0.5 {
+if rel_inc > plan_inc_warn {
   print "WARNING: planes off by " + round(rel_inc, 2) + " deg; run match_planes first.".
 }
 
 if max_wait = 0 {
-  local dperiod is abs(t1 - t_tgt).
-  if dperiod < t1 * 0.01 {
-    set max_wait to 30 * t_tgt.  // co-orbital: no synodic beat to lean on
-  } else {
-    set max_wait to min(30 * t_tgt, max(3 * t_tgt, 2 * t1 * t_tgt / dperiod)).
-  }
+  set max_wait to default_max_wait(t1, t_tgt).
   print "No max_wait given; defaulting to " + round(max_wait / 60) + " min.".
 }
 
 local horizon is time:seconds + max_wait.
 // Also look past the bound, to tell the user what patience would buy.
-local hint_horizon is time:seconds + 3 * max_wait.
+local hint_horizon is time:seconds + plan_hint_factor * max_wait.
 
 local candidates is list().
 
@@ -91,7 +90,7 @@ for aps in list(list("pe", 0, body:radius + target:orbit:periapsis),
   until t_aps0 + k * t_tgt > hint_horizon or k > 100 {
     local t_arr is t_aps0 + k * t_tgt.
     local t_dep is t_arr - t_h.
-    if t_dep > time:seconds + 60 {
+    if t_dep > time:seconds + plan_min_lead {
       // Our angular distance from the departure point at the ideal moment
       // is the window's miss; it becomes an along-track miss of about
       // r2 * delta at arrival, priced as an impulsive fix applied with
@@ -158,7 +157,7 @@ if in_bound:length = 0 {
     print "Waiting longer cannot beat the synodic drift: run detune.".
   }
 
-  if has_out and best_out["dv_fix"] < 0.8 * winner["dv_fix"] {
+  if has_out and best_out["dv_fix"] < plan_hint_better * winner["dv_fix"] {
     print "A larger bound would help: " + describe(best_out).
   }
 }

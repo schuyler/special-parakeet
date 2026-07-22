@@ -8,6 +8,10 @@ runoncepath(scriptPath():parent:parent:combine("core", "optimize.ks")).
 // come from core/safety.ks, same idiom.
 runoncepath(scriptPath():parent:parent:combine("core", "safety.ks")).
 
+// The targeting pipeline's shared thresholds (plan_*) and
+// default_max_wait come from core/planning.ks, same idiom.
+runoncepath(scriptPath():parent:parent:combine("core", "planning.ks")).
+
 // === ORBITAL PREDICTION ===
 
 // Find the current engine ISP

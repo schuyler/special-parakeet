@@ -365,6 +365,21 @@ speculation, not planning.
   refine; `angle_ahead`, `time_to_apsis` (mean anomaly, exact), `closest_approach`,
   match_planes, and rendezvous are eccentricity-proof.
 
+  Follow-up (same day, last): the magic-constant census, acted on. New
+  `core/planning.ks` (imported via `common.ks` beside `safety.ks`) is the policy home for
+  every threshold that appeared in two or more pipeline scripts: `plan_e_circular`,
+  `plan_inc_warn`/`plan_inc_matched` (the warn/act hysteresis pair, finally documented as
+  a pair), `plan_fix_tol`, `plan_approach_tol` (meet's drifting copy of transfer's 2000 m
+  is gone), `plan_matched_dv`/`plan_spent_dv` (the Δv ladder — execute_node residual <
+  spent < matched — now stated as an ordered invariant), `plan_min_lead`/`plan_burn_lead`
+  (the lead-time ladder), the hint factor/threshold, and `default_max_wait()` — the
+  synodic bound formula that detune and loiter had duplicated verbatim (their split's one
+  scar). kOS binds parameters before `run common.`, so tunable defaults use a -1 sentinel
+  resolved after the imports. One-off numerics (scan densities, solver tolerances,
+  refine's brackets) deliberately stay in the scripts beside their justifying comments.
+  Deferred to a future session, per Schuyler: moving the targeting scripts to a
+  `reference/target/` folder.
+
 - **Done (2026-07-19, still later):** the coast rule, landed in `plan_doi.ks` just ahead of
   its first flight (Schuyler testing the revised planner as this was written). A new
   `=== THE COAST ===` section after the placement passes walks the placed ellipse from the
