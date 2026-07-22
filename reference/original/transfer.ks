@@ -82,14 +82,23 @@ if ca0["dist"] <= approach_tol {
   print "Next: run refine to tighten it. run next. run rendezvous.".
 } else {
   // Size up both apsides; the transfer to each is frozen by geometry, so
-  // "auto" just compares their total costs.
+  // "auto" just compares their total costs. An apsis below the body's
+  // safe radius (core/safety.ks) is refused outright: the transfer
+  // ellipse bottoms out at r2, and the alarm-clock workflow means a plan
+  // must be safe to coast unflown.
   local chosen is 0.
   local found is false.
+  local any_unsafe is false.
   for aps in list(list("pe", 0, body:radius + target:orbit:periapsis),
                   list("ap", 180, body:radius + target:orbit:apoapsis)) {
     local aps_name is aps[0].
     local r2 is aps[2].
-    if abs(r1 - r2) / r1 <= tol_coradial {
+    if r2 < safe_radius(body) {
+      set any_unsafe to true.
+      print aps_name + " (" + round((r2 - body:radius) / 1000, 1)
+        + " km) is below " + body:name + "'s safe altitude ("
+        + round(safe_alt(body) / 1000, 1) + " km); not aiming there.".
+    } else if abs(r1 - r2) / r1 <= tol_coradial {
       print aps_name + " is within " + round(tol_coradial * 100, 1)
         + "% of our radius; no transfer there (collapsed).".
     } else if aps_pick = "auto" or aps_pick = aps_name {
@@ -108,9 +117,15 @@ if ca0["dist"] <= approach_tol {
 
   if not found {
     print "Transfer collapses: nothing to fly at the requested apsis.".
-    print "We are already at the target's radius; if the encounter is still".
-    print "missing, the clock is wrong, not the geometry: run loiter, and".
-    print "detune if loiter says the window won't come.".
+    if any_unsafe {
+      print "An apsis was refused as unsafe (above) and the rest collapsed.".
+      print "Meeting this target takes its other apsis (aps_pick) or a".
+      print "hand-planned approach.".
+    } else {
+      print "We are already at the target's radius; if the encounter is still".
+      print "missing, the clock is wrong, not the geometry: run loiter, and".
+      print "detune if loiter says the window won't come.".
+    }
   } else {
     // Depart at our next crossing of the departure point. The departure
     // state comes from the predicted orbit there, not a circular assumption,

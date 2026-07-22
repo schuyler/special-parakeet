@@ -346,6 +346,25 @@ speculation, not planning.
   exports `detune_status` / `detune_t_dep` as globals so the orchestrator knows when the
   window opens without duplicating the window math. Unflown, like the rest.
 
+  Follow-up (same day, later still): periapsis safety, audited and closed. The audit
+  found exactly one floor in the pipeline (detune's dip check) and two gaps: `refine.ks`
+  optimizes miss distance with no constraint (a round-1 ±10 m/s prograde probe moves the
+  far apsis ~30 km at LKO), and `transfer.ks` implicitly trusts the target's orbit (its
+  ellipse bottoms out at the chosen apsis radius — unsafe for a decaying target). New
+  `core/safety.ks` (imported via `common.ks`) is the policy home: `safe_alt`/`safe_radius`
+  from a per-body table — Kerbin 71 km (the atmosphere ends *sharp* at 70; the old flat
+  atm+10 km rule banned the sub-80 km parking orbits Schuyler actually launches to), Mun
+  9 km, Minmus 7 km, conservative fallback elsewhere. Wired in four places: detune's floor
+  now reads the table (`safe_margin` repurposed to extra clearance, default 0), transfer
+  refuses an apsis below the floor (the alarm-clock workflow means every plan must be safe
+  to coast unflown), refine's objective returns a floor-sloped penalty for probes whose
+  post-burn periapsis dips under `safe_alt`, and meet refuses to start from an orbit
+  already below it (laps are what a decaying orbit doesn't survive). Circularity audit
+  recorded for ch. 9's honesty box: the planners lean on circular assumptions only for
+  seeds and crossing-time proration (`ang/360·T`), warned at e > 0.02 and absorbed by
+  refine; `angle_ahead`, `time_to_apsis` (mean anomaly, exact), `closest_approach`,
+  match_planes, and rendezvous are eccentricity-proof.
+
 - **Done (2026-07-19, still later):** the coast rule, landed in `plan_doi.ks` just ahead of
   its first flight (Schuyler testing the revised planner as this was written). A new
   `=== THE COAST ===` section after the placement passes walks the placed ellipse from the

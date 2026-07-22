@@ -41,9 +41,9 @@ clearscreen.
 //                  "none" (nothing reachable inside max_wait)
 //   detune_t_dep   UT seconds of the chosen window's departure (0 if none)
 
-parameter max_wait is 0.        // latest arrival, s from now; 0 = default
-parameter safe_margin is 10000. // clearance over atmosphere/surface for dips
-parameter fix_tol is 25.        // natural miss at/below this: no burn, m/s
+parameter max_wait is 0.    // latest arrival, s from now; 0 = default
+parameter safe_margin is 0. // extra clearance over the body's safe radius, m
+parameter fix_tol is 25.    // natural miss at/below this: no burn, m/s
 
 run common.
 run orbital.
@@ -55,10 +55,11 @@ local t1 is ship:orbit:period.
 local t_tgt is target:orbit:period.
 local a_tgt is target:orbit:semimajoraxis.
 
-local floor_r is body:radius + safe_margin.
-if body:atm:exists {
-  set floor_r to body:radius + body:atm:height + safe_margin.
-}
+// The floor is per-body policy (core/safety.ks, via common): Kerbin's
+// hard atmosphere edge plus a hair, the moons' terrain plus room. The
+// old flat atmosphere+10km rule banned the low parking orbits we
+// actually fly from phasing downward at all.
+local floor_r is safe_radius(body) + safe_margin.
 
 // visviva, angle_ahead, and time_to_apsis come from orbital.ks.
 

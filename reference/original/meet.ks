@@ -66,6 +66,17 @@ function main {
     return.
   }
 
+  // The whole procedure assumes laps are free; on an orbit that dips
+  // below the body's safe altitude (core/safety.ks) they are anything
+  // but. Refuse up front rather than plan a loiter we won't survive.
+  if ship:orbit:periapsis < safe_alt(body) {
+    print "STOP: periapsis " + round(ship:orbit:periapsis / 1000, 1)
+      + " km is below " + body:name + "'s safe altitude ("
+      + round(safe_alt(body) / 1000, 1) + " km).".
+    print "Raise it first; a rendezvous starts from a stable orbit.".
+    return.
+  }
+
   print "=== MEET: " + target:name + " ===".
 
   // Resume bookkeeping. A previous run (or a manual `run next`, which

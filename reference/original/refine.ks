@@ -12,6 +12,14 @@ clearscreen.
 //
 // This can take a minute of game time: every probe of a node parameter
 // re-solves for the moment of closest approach.
+//
+// One constraint rides along: the post-burn orbit must keep its
+// periapsis above the body's safe altitude (core/safety.ks). Without it,
+// a round-1 prograde probe of +-10 m/s can move the far apsis by tens of
+// kilometres — chasing the last few hundred metres of miss straight into
+// the atmosphere when the encounter sits just above it. Probes that dip
+// below the floor score a huge, floor-sloped penalty instead of a
+// separation, so the search walks back out on its own.
 
 parameter rounds is 3.
 
@@ -39,6 +47,11 @@ function tune {
   local f is {
     parameter x.
     setter(x).
+    if nd:orbit:periapsis < safe_alt(body) {
+      // Far larger than any real separation, sloped so the search
+      // knows which way is back above the floor.
+      return 1e9 + (safe_alt(body) - nd:orbit:periapsis).
+    }
     return closest_sep().
   }.
   setter(minimize(f, x0 - step, x0 + step, step / 10)).

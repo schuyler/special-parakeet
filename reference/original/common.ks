@@ -4,6 +4,10 @@
 // directory is not disturbed.
 runoncepath(scriptPath():parent:parent:combine("core", "optimize.ks")).
 
+// safe_alt and safe_radius — the per-body minimum-altitude policy —
+// come from core/safety.ks, same idiom.
+runoncepath(scriptPath():parent:parent:combine("core", "safety.ks")).
+
 // === ORBITAL PREDICTION ===
 
 // Find the current engine ISP
