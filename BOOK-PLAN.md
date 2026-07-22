@@ -319,6 +319,18 @@ speculation, not planning.
   each conflated two adjacent steps; git history keeps them. All three new scripts are
   **unflown**.
 
+  Follow-up (same day): made "collapsible to a no-op" true in every reachable state, not
+  just the happy path. `transfer.ks` gained an encounter gate — before planning anything it
+  asks `closest_approach` (which honors pending nodes) whether the flight plan already
+  meets `approach_tol`; if so it collapses instead of wiping good nodes to plan a burn from
+  the middle of the ellipse, the one state its co-radial test couldn't see. `rendezvous.ks`
+  gained the guards its siblings had: a no-target check, a collapse when relative speed at
+  the encounter is already under `min_dv` (new parameter; dock2 owns the last few m/s), and
+  node cleanup before adding — it used to stack a near-zero node per rerun. Its private
+  `closest_approach` (a name collision with `orbital.ks`'s since the gate landed) is gone;
+  it now uses orbital's. Every planner in the pipeline is now safe to rerun blind at any
+  point in the procedure. Still unflown.
+
 - **Done (2026-07-19, still later):** the coast rule, landed in `plan_doi.ks` just ahead of
   its first flight (Schuyler testing the revised planner as this was written). A new
   `=== THE COAST ===` section after the placement passes walks the placed ellipse from the
