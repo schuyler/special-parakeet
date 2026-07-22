@@ -288,6 +288,13 @@ function body_rotation {
 
 function body_longitude {
     // Longitude = (Ω + ω + ν) - ω_body × (t - t₀)
+    //
+    // Equatorial-track shortcut: ω + ν is an angle in the orbital plane,
+    // and adding it straight to Ω projects it one-to-one onto the
+    // equator. On an inclined orbit the projection runs through the
+    // inclination instead, and this over-rotates by up to ~i²/4 radians.
+    // Exact at zero inclination, which is what its callers fly;
+    // geoposition_at no longer routes through it.
     parameter t is time.
     parameter orbit_ is ship:orbit.
     local lng is (
@@ -310,17 +317,25 @@ function geoposition_at {
         set pos to future:position.
     }
 
-    // Latitude is 90º minus the angle between the Y-axis and the SOI-RAW position vector 
-    local lat is 90 - vang(v(0, 1, 0), pos:normalized).
-
-    // Longitude is LAN + AoP + True Anomaly - body rotation
-    local lng is body_longitude(t, orbit_).
-
-    return orbit_:body:geoPositionLatLng(lat, lng).
+    // Read the lat/lng of the projected point with the body's own
+    // spherical conversion, then shift the longitude by the rotation the
+    // body accrues between now and t — geopositionof answers in the
+    // body's CURRENT orientation, and the interval is measured from now
+    // for the reason body_rotation documents. Latitude needs no shift:
+    // the spin never moves it. (This used to take its longitude from
+    // body_longitude, whose equatorial shortcut drifts on inclined
+    // orbits; reading the vector keeps both coordinates exact at any
+    // inclination.)
+    local geo_now is orbit_:body:geopositionof(pos + orbit_:body:position).
+    local lng is wrap_longitude(
+        geo_now:lng - (360 / orbit_:body:rotationPeriod) * (t - time):seconds).
+    return orbit_:body:geoPositionLatLng(geo_now:lat, lng).
 }
 
 function time_to_longitude {
     // Convert time to longitude for a given orbit.
+    // Equatorial-track like body_longitude, whose root it chases: for a
+    // target off an inclined orbit's track, use ground_target_approach.
     parameter target_longitude.
     parameter orbit_ is ship:orbit.
     // Minimum accuracy for time estimate, default is 1 second.
@@ -383,4 +398,81 @@ function time_to_longitude {
     print "time_to_longitude: no root near estimate " + round(t_estimate)
         + " s for longitude " + round(target_longitude, 2) + ".".
     return t0 - 1.   // sentinel: a time in the past; callers must check
+}
+
+// == Ground track functions ==
+
+// Great-circle distance, metres along the datum sphere, from the orbit's
+// ground track at time t to a fixed surface target. Track point and
+// target are both read in the raw frame at the same instant, so the
+// central angle between their body-centred directions is what it is in
+// any frame; terrain height perturbs either end by parts in a thousand
+// of the radius and is ignored.
+function ground_track_distance {
+    parameter t.
+    parameter target_geo.
+    parameter orbit_ is ship:orbit.
+
+    local body_ is orbit_:body.
+    local u_track is (geoposition_at(t, orbit_):position - body_:position):normalized.
+    local u_target is (target_geo:position - body_:position):normalized.
+    return vang(u_track, u_target) * constant:degtorad * body_:radius.
+}
+
+// The earliest pass: when does the ground track next come within
+// tolerance metres of the target? The search window is one revolution at
+// a time, because that is the scale the objective is structured on:
+// within a revolution the distance to the target dips at most twice —
+// an ascending and a descending pass — which minimize_scan's two dozen
+// samples resolve, where bare ternary search would not (two dips is not
+// unimodal) and one scan across all the revolutions at once would let
+// the sample step outgrow the dips. Each revolution the body's rotation
+// slides the track one synodic step of longitude westward across the
+// target, so the windows genuinely differ, and the walk stops at the
+// first one whose best approach is inside tolerance — the pilot's
+// question is the earliest good-enough pass, not a marginally closer
+// one days later.
+//
+// Returns a lexicon. "ok" true means time/eta/closest name a pass
+// within tolerance. "ok" false means max_orbits revolutions held no
+// such pass, and the closest one found rides along in the same keys —
+// both to say how near a miss it was and because some misses are
+// structural: a target latitude beyond the orbit's inclination is out
+// of the track's reach on any revolution. Assumes a closed orbit (the
+// period is the window). Maneuver nodes are not consulted: this asks
+// about the orbit as it stands.
+function ground_target_approach {
+    parameter target_geo.           // a GeoCoordinates target
+    parameter tolerance.            // metres of acceptable miss
+    parameter max_orbits is 8.      // how many revolutions to walk
+    parameter orbit_ is ship:orbit.
+    parameter epsilon is 1.         // pass-time precision, seconds
+    parameter samples is 24.        // scan density per revolution
+
+    local t0 is time.
+    local dist is {
+        parameter dt.
+        return ground_track_distance(t0 + dt, target_geo, orbit_).
+    }.
+
+    local best is lexicon("ok", false, "distance", -1).
+    local rev is 0.
+    until rev >= max_orbits {
+        local dt is minimize_scan(dist,
+            rev * orbit_:period, (rev + 1) * orbit_:period,
+            epsilon, samples).
+        local d is dist(dt).
+        if best["distance"] < 0 or d < best["distance"] {
+            set best to lexicon(
+                "ok", d <= tolerance,
+                "time", t0 + dt,
+                "eta", dt,
+                "distance", d,
+                "rev", rev,
+                "closest", geoposition_at(t0 + dt, orbit_)).
+        }
+        if d <= tolerance { break. }
+        set rev to rev + 1.
+    }
+    return best.
 }

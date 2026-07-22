@@ -35,6 +35,58 @@ function find_zero { // of a function using the Newton-Raphson method
     return x.
 }
 
+// Ternary search for the minimum of a unimodal function on [a, b].
+// Twinned with minimize in reference/original/common.ks — identical on
+// purpose, so scripts that load both libraries see one behavior no
+// matter the load order. Change the two together.
+function minimize {
+    parameter func, a, b.
+    parameter epsilon is 0.2.
+    parameter nmax is 1000.
+
+    local n is 0.
+    local m1 is 0.
+    local m2 is 0.
+    until n > nmax or abs(b - a) < epsilon {
+        set m1 to a + (b - a) / 3.
+        set m2 to b - (b - a) / 3.
+        if func(m1) > func(m2) {
+            set a to m1.
+        } else {
+            set b to m2.
+        }
+        set n to n + 1.
+    }
+    return (a + b) / 2.
+}
+
+// Minimize func over [a, b] without assuming it's unimodal there, which
+// bare ternary search does: coarse-scan the interval, bracket the best
+// sample, then hand the bracket to minimize. Guards against a minimum
+// sitting on (or just past) a boundary and against multiple local dips.
+// Twinned with reference/original/common.ks, like minimize above.
+function minimize_scan {
+    parameter func, a, b.
+    parameter epsilon is 0.2.
+    parameter samples is 24.
+
+    local step is (b - a) / samples.
+    local best_i is 0.
+    local best_f is func(a).
+    local i is 1.
+    until i > samples {
+        local f is func(a + i * step).
+        if f < best_f {
+            set best_f to f.
+            set best_i to i.
+        }
+        set i to i + 1.
+    }
+    local lo is a + max(0, best_i - 1) * step.
+    local hi is a + min(samples, best_i + 1) * step.
+    return minimize(func, lo, hi, epsilon).
+}
+
 function bisect {
     parameter f.
     parameter start.

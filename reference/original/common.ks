@@ -1,6 +1,9 @@
 // === ORBITAL PREDICTION ===
 
 // Minimize a function value
+// Twinned with reference/core/optimize.ks (as is minimize_scan below) —
+// identical on purpose, so scripts that load both libraries see one
+// behavior no matter the load order. Change the two together.
 function minimize {
   // this is basically ternary search straight off Wikipedia
   parameter func, a, b.

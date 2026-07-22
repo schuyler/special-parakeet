@@ -107,6 +107,36 @@ function test_time_to_longitude {
     print "".
 }
 
+function test_ground_track_distance {
+    // The orbit's own sub-point a quarter revolution ahead, taken as the
+    // target, should read as ~zero distance at that time and well away
+    // from zero now.
+    local probe is ship:orbit:period / 4.
+    local tgt is geoposition_at(time + probe).
+    print "== Ground Track Distance Test ==".
+    print "at t+probe: " + round(ground_track_distance(time + probe, tgt), 1)
+        + " m (want ~0).".
+    print "now: " + round(ground_track_distance(time, tgt) / 1000, 1)
+        + " km (want well above 0).".
+    print "".
+}
+
+function test_ground_target_approach {
+    // Aim at the sub-point a quarter revolution out: the earliest pass
+    // within tolerance should be that very overflight, on rev 0. eta
+    // runs a little under probe because game time passes between
+    // choosing the target and starting the search.
+    local probe is ship:orbit:period / 4.
+    local tgt is geoposition_at(time + probe).
+    local pass is ground_target_approach(tgt, 1000, 4).
+    print "== Ground Target Approach Test ==".
+    print "ok: " + pass["ok"] + " (want True).".
+    print "eta: " + round(pass["eta"], 1) + " s (want ~" + round(probe) + ").".
+    print "rev: " + pass["rev"] + " (want 0).".
+    print "distance: " + round(pass["distance"], 1) + " m (want ~0).".
+    print "".
+}
+
 clearscreen.
 test_mean_anomaly_at_epoch().
 test_mean_anomaly().
@@ -115,5 +145,7 @@ test_true_anomaly().
 test_orbit_at(600).
 test_body_longitude().
 test_geoposition_at().
+test_ground_track_distance().
+test_ground_target_approach().
 //test_time_to_longitude().
 //print "Longitude: " + body_longitude(time) + ", longitude + 1 orbit: "  + body_longitude(time+synodic_period()).
