@@ -19,10 +19,10 @@ until false {
   set m to mean_anomaly_at_r(orbit, alt_ + body:radius).
   print "Mean anomaly based on altitude: " + round(m[0], 3) + "ª " + round(m[1], 3) + "º".
 
-  local dt to time_to_altitude(orbit, orbit:apoapsis).
+  local dt to time_until_altitude(orbit, orbit:apoapsis).
   print "Time to apoapsis: " + dt:minute + ":" + dt:second.
   print "".
-  set dt to time_to_altitude(orbit, orbit:periapsis).
+  set dt to time_until_altitude(orbit, orbit:periapsis).
   print "Time to periapsis: " + dt:minute + ":" + dt:second.
 
   wait 1.

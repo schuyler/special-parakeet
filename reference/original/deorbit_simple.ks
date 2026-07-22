@@ -20,8 +20,7 @@ local burn_t to timestamp() + time_to_meridian(ship:orbit, burn_lng).
 
 print "Starting deorbit burn at " + burn_lng + "º in " + round(burn_t:seconds) + "s.".
 
-local ob to orbit_at(ship:orbit, burn_t).
-local s0 to orbital_speed_v1(ob).
-local s1 to deorbit_speed(ob, burn_t, target_periapsis).
+local s0 to orbital_speed_v1(ship:orbit, altitude_at(ship:orbit, burn_t)).
+local s1 to deorbit_speed(ship:orbit, burn_t, target_periapsis).
 local nd to node(burn_t, 0, 0, s1 - s0).
 add(nd).

@@ -25,10 +25,10 @@ if (delta_lng < 0) {
 // How long will it take to get there?
 local delta_t to ship:orbit:period * delta_lng / 360.
 
-// Great. Find the orbital parameters at that point, then use the vis-viva equation to compute the instantaneous delta-V to get into the orbit we want.
-local ob to orbit_at(ship:orbit, time + delta_t).
-local v0 to orbital_speed_v1(ob, altitude_at(ob)).
-local v1 to orbital_speed_v1(ob, altitude_at(ob), ob:apoapsis, new_periapsis).
+// Great. Find the altitude at that point, then use the vis-viva equation to compute the instantaneous delta-V to get into the orbit we want.
+local alt_burn to altitude_at(ship:orbit, time + delta_t).
+local v0 to orbital_speed_v1(ship:orbit, alt_burn).
+local v1 to orbital_speed_v1(ship:orbit, alt_burn, ship:orbit:apoapsis, new_periapsis).
 
 // Create the maneuver node at that time.
 local nd to node(time:seconds + delta_t, 0, 0, v1 - v0).

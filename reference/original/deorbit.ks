@@ -6,6 +6,7 @@ parameter target_periapsis is -20000.
 
 runpath("common").
 runpath("orbital").
+runpath("../core/kepler").  // orbit_at (state vectors), geoposition_at
 
 clearscreen.
 print "=== PLOT DEORBIT NODE ===".
@@ -15,7 +16,7 @@ print "=== PLOT DEORBIT NODE ===".
 // 1. given deorbit_lng, target_lng, target_periapsis, dv
 // 2. what is utc at deorbit_lng on current orbit
 // 3. compute new orbit starting at utc using target_periapsis
-// 4. what is time_to_altitude(0) on that orbit
+// 4. what is time_until_altitude(0) on that orbit
 // 5. what is the position on that orbit at that time
 // 6. what is the lng of the geoposition of that orbit at that time
 // 7. what is the difference between the landing lng and the target_lng
@@ -36,22 +37,17 @@ function deorbit_trajectory {
   parameter t is timestamp().
   parameter target is target_periapsis.
 
-  local ob to orbit_at(ob0, t).
-  local s to deorbit_speed(ob, t, target).
-  // print "orbital speed: " + orbital_speed(ob).
-  // print "deorbit speed from " + round(altitude_at(ob, t)) + "m = " + round(s, 1) + " m/s.".
-
-  print "deorbit_trajectory ob:velocity = " + ob:velocity:orbit.
-  local vel to ob:velocity:orbit:normalized * s.
-  // print "trajectory velocity: " + vel + " = " + vel:mag.
-  // print round(orbital_speed(ob) - vel:mag, 1) + " m/s deorbit burn in " + round(t:seconds - time:seconds) + "s".
+  // core/kepler's orbit_at: position and velocity vectors at time t
+  local state to orbit_at(t, ob0).
+  local s to deorbit_speed(ob0, t, target).
+  local vel to state["velocity"]:normalized * s.
 
   // create an orbit that's heading in the same direction but at a different speed
   // https://github.com/KSP-KOS/KOS/issues/2862#issue-794415466
   local ob1 to createorbit(
-    -V(ob:body:position:x, ob:body:position:z, ob:body:position:y),
+    V(state["position"]:x, state["position"]:z, state["position"]:y),
     V(vel:x, vel:z, vel:y),
-    ob:body,
+    ob0:body,
     t:seconds).
 
 
@@ -62,12 +58,11 @@ function deorbit_trajectory {
 function landing_site {
   parameter ob.
 
-  // what is the timestamp when that trajectory crosses sea level?
-  local t1 is time_to_altitude(ob, 0, false).
-  // print "time to sea level: " + t1.
+  // how long until that trajectory crosses sea level?
+  local t1 is time_until_altitude(ob, 0, false).
 
-  // what is the geoposition at that time?
-  local site is geoposition_at(ob, time:seconds + t1).
+  // what is the geoposition at that time? (core/kepler's geoposition_at)
+  local site is geoposition_at(time + t1, ob).
   return site.
 }
 
@@ -121,7 +116,7 @@ function program_deorbit_burn {
   // Take the best trajectory and set up the node
   local trajectory to deorbit_trajectory(ob, deorbit_t, target_periapsis).
   local v1 to deorbit_speed(ob, deorbit_t, target_periapsis).
-  local v0 to orbital_speed_v1(orbit_at(ob, deorbit_t)).
+  local v0 to orbital_speed_v1(ob, altitude_at(ob, deorbit_t)).
 
   // print v1 + " > " + v0.
 

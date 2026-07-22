@@ -194,7 +194,10 @@ function mean_anomaly_at_r {
 }
 
 // Estimate the time to reach a given orbital height from the current orbit.
-function time_to_altitude {
+// Returns a RELATIVE dt in seconds. (core/kepler.ks's time_to_altitude
+// returns an absolute timestamp — hence the distinct name, so both
+// libraries can be loaded together.)
+function time_until_altitude {
   parameter ob is ship:orbit.
   parameter target_alt is ob:periapsis.
   parameter ascending is false.
@@ -261,44 +264,19 @@ function time_to_meridian {
   return timespan(dt).
 }
 
-// --- kOS ORBIT HELPERS
-
-// Give us a kOS Orbit object as if orbiter were at a different point in its
-// orbit right now. This feels like it shouldn't work.
-//
-function orbit_at { // return Orbit
-  parameter ob is ship:orbit.
-  parameter t is timestamp().
-  return createorbit(
-    ob:inclination,
-    ob:eccentricity,
-    ob:semimajoraxis,
-    ob:lan,
-    ob:argumentofperiapsis,
-    // as if the orbiting body were at that point in the orbit
-    mean_anomaly_at_t(ob, t),
-    // ... but right now :D
-    time:seconds,
-    ob:body).
-}
-
-// What's the altitude of that orbit at time t?
-// This is defined on Orbitables but not Orbits, so we cheat.
-//
+// Altitude of an orbit at time t, straight from the conic equation:
+// r = a(1 - e²) / (1 + e·cos ν). No orbit_at/createorbit trick needed.
+// (This file used to define orbit_at and geoposition_at too; those names
+// now belong to core/kepler.ks, whose versions the descent scripts use,
+// and removing them here makes the two libraries safe to load together.)
 function altitude_at { // return m above sea level
   parameter ob0 is ship:orbit.
   parameter t is timestamp().
-  local ob to orbit_at(ob0, t).
-  return ob:body:altitudeof(ob:position).
-} 
-
-// Get the body-surface coordinates of the orbit but at time t
-//
-function geoposition_at {
-  parameter ob0 is ship:orbit.
-  parameter t is timestamp().
-  local ob to orbit_at(ob0, t).
-  return ob:body:geopositionof(ob:position).
+  local e is ob0:eccentricity.
+  local m is mean_anomaly_at_t(ob0, t).
+  local nu is mean_to_true_anomaly(m, e).
+  local r_ is ob0:semimajoraxis * (1 - e ^ 2) / (1 + e * cos(nu)).
+  return r_ - ob0:body:radius.
 }
 
 // Test the conversion functions
