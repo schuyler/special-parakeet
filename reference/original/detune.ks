@@ -33,6 +33,13 @@ clearscreen.
 //
 // Next: run next (fly the burn), run loiter (watch the window line up),
 // run transfer at the return.
+//
+// Exports, for meet.ks or anything else that orchestrates (kOS globals,
+// set on every run):
+//   detune_status  "wait" (a window lines up on its own; no burn),
+//                  "burn" (node added; fly it, then wait for the window),
+//                  "none" (nothing reachable inside max_wait)
+//   detune_t_dep   UT seconds of the chosen window's departure (0 if none)
 
 parameter max_wait is 0.        // latest arrival, s from now; 0 = default
 parameter safe_margin is 10000. // clearance over atmosphere/surface for dips
@@ -158,6 +165,8 @@ if has_natural and best_natural["dv_fix"] <= fix_tol {
     + round((best_natural["t_dep"] - time:seconds) / 60, 1)
     + "m already lines up (~" + round(best_natural["dv_fix"], 1) + " m/s).".
   print "No burn needed. Run loiter, then transfer.".
+  global detune_status is "wait".
+  global detune_t_dep is best_natural["t_dep"].
 } else {
   // Split candidates by the bound; track the best beyond it for the hint.
   local in_bound is list().
@@ -178,6 +187,8 @@ if has_natural and best_natural["dv_fix"] <= fix_tol {
       print "Best beyond the bound: " + describe(best_out).
     }
     print "Rerun with a larger max_wait.".
+    global detune_status is "none".
+    global detune_t_dep is 0.
   } else {
     print "Candidates arriving in time (" + in_bound:length + " found, best 3):".
     local winner is in_bound[0].
@@ -215,5 +226,7 @@ if has_natural and best_natural["dv_fix"] <= fix_tol {
       + " point at +" + round((winner["t_dep"] - time:seconds) / 60, 1)
       + "m, on time for the window.".
     print "Next: run next. run loiter to verify. run transfer at the window.".
+    global detune_status is "burn".
+    global detune_t_dep is winner["t_dep"].
   }
 }

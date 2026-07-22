@@ -139,7 +139,7 @@ later, better draft; the book can show the progression where instructive.
 | `set_periapsis.ks`, `move_periapsis.ks` | 7 | |
 | `set_inclination.ks` | 7 | plane-change maneuver; fits ch. 7 (orbital transfers) rather than ch. 9 (rendezvous) because inclination change is a purely Hohmann-adjacent maneuver with no phasing |
 | `kepler.ks`, `orbital.ks` (anomalies) | 8 | `kepler.ks`'s original header quip ("don't need it, see orbit.ks" — since replaced with an accurate note; see git history) is itself a good pedagogical beat: derive by hand, then learn what the API gives you |
-| `match_planes.ks`, `detune.ks`, `loiter.ks`, `transfer.ks`, `refine.ks`, `rendezvous.ks` (the closest-approach velocity match, formerly named `intercept.ks`), `next.ks`, `wait_for_launch.ks` | 9 | one script per step, each collapsible to a no-op: match planes → detune (fix the clock) → loiter (count laps; no burn) → transfer (fix the geometry) → refine node → fly → rendezvous burn. Supersedes the conflated `intercept.ks`/`phase.ks` pair (see git history) — each bundled two steps and a near-co-radial parking orbit fell between them |
+| `match_planes.ks`, `detune.ks`, `loiter.ks`, `transfer.ks`, `refine.ks`, `rendezvous.ks` (the closest-approach velocity match, formerly named `intercept.ks`), `meet.ks`, `next.ks`, `wait_for_launch.ks` | 9 | one script per step, each collapsible to a no-op: match planes → detune (fix the clock) → loiter (count laps; no burn) → transfer (fix the geometry) → refine node → fly → rendezvous burn. Supersedes the conflated `intercept.ks`/`phase.ks` pair (see git history) — each bundled two steps and a near-co-radial parking orbit fell between them. `meet.ks` orchestrates the whole pipeline, exiting for an alarm whenever the next wait exceeds its patience — the chapter's payoff: because every step collapses, resuming is just rerunning |
 | `dock.ks`, `dock2.ks`, `fuelxfer.ks` | 10 | |
 | `deorbit.ks`, `deorbit_simple.ks`, `deorbit_node.ks`, `drop_periapsis.ks`, `landing.ks`, `land_at_periapsis.ks`, `common.ks` (`time_to_surface`, `landing_time` Newton iteration) | 11–12 | the terrain-height Newton iteration is exactly the "numerical methods where closed form runs out" lesson |
 | `predict_landing.ks` | 11–12 | early landing-site prediction; compare to `reference/landing_v2/` for the improved approach |
@@ -330,6 +330,21 @@ speculation, not planning.
   `closest_approach` (a name collision with `orbital.ks`'s since the gate landed) is gone;
   it now uses orbital's. Every planner in the pipeline is now safe to rerun blind at any
   point in the procedure. Still unflown.
+
+  Follow-up (same day, later): `meet.ks`, the master script the collapse guards were
+  quietly building toward. It runs the whole pipeline in order, flying each burn via
+  `common.ks`'s `execute_node`, and exits the moment the next wait — node or transfer
+  window — exceeds `patience` (parameter, minutes), printing the UT to set an alarm for.
+  Resuming is just `run meet.` again: no state is carried between runs (the orbit is the
+  state), an encounter gate up front skips the first three steps once the flight plan
+  already meets the target, and a startup sweep clears spent/stale nodes (`next.ks` keeps
+  the executed node; a missed alarm leaves a node in the past — both just get replanned).
+  Other parameters: `max_loiter` caps only the window search (the one unbounded wait —
+  the synodic clock can be arbitrarily slow; every other wait takes as long as it takes)
+  and `dv_budget` covers the burns still ahead of the current run, which needs no
+  cross-run bookkeeping precisely because completed steps collapse. `detune.ks` now
+  exports `detune_status` / `detune_t_dep` as globals so the orchestrator knows when the
+  window opens without duplicating the window math. Unflown, like the rest.
 
 - **Done (2026-07-19, still later):** the coast rule, landed in `plan_doi.ks` just ahead of
   its first flight (Schuyler testing the revised planner as this was written). A new
