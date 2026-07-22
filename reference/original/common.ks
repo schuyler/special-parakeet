@@ -1,57 +1,10 @@
+// minimize, minimize_scan, find_zero, and bisect come from
+// core/optimize.ks — one home, no twin copies to keep in sync. Located
+// relative to this file, kepler.ks's idiom, so the caller's current
+// directory is not disturbed.
+runoncepath(scriptPath():parent:parent:combine("core", "optimize.ks")).
+
 // === ORBITAL PREDICTION ===
-
-// Minimize a function value
-// Twinned with reference/core/optimize.ks (as is minimize_scan below) —
-// identical on purpose, so scripts that load both libraries see one
-// behavior no matter the load order. Change the two together.
-function minimize {
-  // this is basically ternary search straight off Wikipedia
-  parameter func, a, b.
-  parameter epsilon is 0.2.
-  parameter nmax is 1000.
-
-  local n is 0.
-  local m1 is 0.
-  local m2 is 0.
-  until n > nmax or abs(b - a) < epsilon {
-    //print "A: " + round(a, 1) + " F(a): " + round(func(a), 1) + " B: " + round(b, 1) + " F(b): " + round(func(b),1).
-    set m1 to a + (b - a) / 3.
-    set m2 to b - (b - a) / 3.
-    if func(m1) > func(m2) {
-	    set a to m1.
-    } else {
-	    set b to m2.
-    }
-    set n to n + 1.
-  }
-  return (a + b) / 2.
-}
-
-// Minimize func over [a, b] without assuming it's unimodal there, which
-// bare ternary search does: coarse-scan the interval, bracket the best
-// sample, then hand the bracket to minimize. Guards against a minimum
-// sitting on (or just past) a boundary and against multiple local dips.
-function minimize_scan {
-  parameter func, a, b.
-  parameter epsilon is 0.2.
-  parameter samples is 24.
-
-  local step is (b - a) / samples.
-  local best_i is 0.
-  local best_f is func(a).
-  local i is 1.
-  until i > samples {
-    local f is func(a + i * step).
-    if f < best_f {
-      set best_f to f.
-      set best_i to i.
-    }
-    set i to i + 1.
-  }
-  local lo is a + max(0, best_i - 1) * step.
-  local hi is a + min(samples, best_i + 1) * step.
-  return minimize(func, lo, hi, epsilon).
-}
 
 // Find the current engine ISP
 function engine_isp {

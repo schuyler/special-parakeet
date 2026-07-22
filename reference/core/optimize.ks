@@ -36,9 +36,6 @@ function find_zero { // of a function using the Newton-Raphson method
 }
 
 // Ternary search for the minimum of a unimodal function on [a, b].
-// Twinned with minimize in reference/original/common.ks — identical on
-// purpose, so scripts that load both libraries see one behavior no
-// matter the load order. Change the two together.
 function minimize {
     parameter func, a, b.
     parameter epsilon is 0.2.
@@ -64,7 +61,6 @@ function minimize {
 // bare ternary search does: coarse-scan the interval, bracket the best
 // sample, then hand the bracket to minimize. Guards against a minimum
 // sitting on (or just past) a boundary and against multiple local dips.
-// Twinned with reference/original/common.ks, like minimize above.
 function minimize_scan {
     parameter func, a, b.
     parameter epsilon is 0.2.
