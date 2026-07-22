@@ -3,7 +3,7 @@ clearscreen.
 // === NODE REFINEMENT ===
 //
 // Refine the next maneuver node to minimize the predicted closest approach
-// to the target. Works on any node — a departure from intercept.ks, a
+// to the target. Works on any node — a transfer.ks departure, a detune.ks
 // phasing entry, or a small mid-course correction node added by hand —
 // because positionat/velocityat honor planned nodes, so the objective is
 // simply "predicted separation with this candidate node in the flight

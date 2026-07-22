@@ -11,8 +11,9 @@ run orbital.  // separation_at, relative_velocity_at
 // === RENDEZVOUS CALCULATION ===
 //
 // An intercept crosses the target's path; a rendezvous also matches its
-// velocity. This assumes intercept.ks (or luck) already produced a close
-// approach, and plans the burn that nulls the relative velocity there.
+// velocity. This assumes the detune/loiter/transfer pipeline (or luck)
+// already produced a close approach, and plans the burn that nulls the
+// relative velocity there.
 
 function closest_approach {
   // Full periods, not period/2: after a transfer burn the encounter sits at

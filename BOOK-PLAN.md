@@ -139,7 +139,7 @@ later, better draft; the book can show the progression where instructive.
 | `set_periapsis.ks`, `move_periapsis.ks` | 7 | |
 | `set_inclination.ks` | 7 | plane-change maneuver; fits ch. 7 (orbital transfers) rather than ch. 9 (rendezvous) because inclination change is a purely Hohmann-adjacent maneuver with no phasing |
 | `kepler.ks`, `orbital.ks` (anomalies) | 8 | `kepler.ks`'s original header quip ("don't need it, see orbit.ks" — since replaced with an accurate note; see git history) is itself a good pedagogical beat: derive by hand, then learn what the API gives you |
-| `match_planes.ks`, `intercept.ks` (transfer planner), `refine.ks`, `rendezvous.ks` (the closest-approach velocity match, formerly named `intercept.ks`), `next.ks`, `wait_for_launch.ks` | 9 | the full pipeline: match planes → plan intercept → refine node → fly → rendezvous burn |
+| `match_planes.ks`, `detune.ks`, `loiter.ks`, `transfer.ks`, `refine.ks`, `rendezvous.ks` (the closest-approach velocity match, formerly named `intercept.ks`), `next.ks`, `wait_for_launch.ks` | 9 | one script per step, each collapsible to a no-op: match planes → detune (fix the clock) → loiter (count laps; no burn) → transfer (fix the geometry) → refine node → fly → rendezvous burn. Supersedes the conflated `intercept.ks`/`phase.ks` pair (see git history) — each bundled two steps and a near-co-radial parking orbit fell between them |
 | `dock.ks`, `dock2.ks`, `fuelxfer.ks` | 10 | |
 | `deorbit.ks`, `deorbit_simple.ks`, `deorbit_node.ks`, `drop_periapsis.ks`, `landing.ks`, `land_at_periapsis.ks`, `common.ks` (`time_to_surface`, `landing_time` Newton iteration) | 11–12 | the terrain-height Newton iteration is exactly the "numerical methods where closed form runs out" lesson |
 | `predict_landing.ks` | 11–12 | early landing-site prediction; compare to `reference/landing_v2/` for the improved approach |
@@ -306,7 +306,18 @@ speculation, not planning.
 
 ## Status
 
-*Last updated: 2026-07-19*
+*Last updated: 2026-07-22*
+
+- **Done (2026-07-22):** rendezvous planning restructured into one spike per step, after a
+  flight test showed a near-co-radial parking orbit falling between `intercept.ks` (whose
+  only timing lever was waiting out a synodic beat that vanishes as the periods converge)
+  and `phase.ks` (whose co-radial gate refused it). The four-step decomposition, each step
+  collapsible to a no-op: `detune.ks` (change period so the clock lines up), `loiter.ks`
+  (count laps to the next transfer window; plans no burn), `transfer.ks` (the
+  Kepler-frozen half-ellipse; reads departure state from the predicted orbit so it accepts
+  a detuned handoff), `rendezvous.ks` (unchanged). `intercept.ks` and `phase.ks` deleted —
+  each conflated two adjacent steps; git history keeps them. All three new scripts are
+  **unflown**.
 
 - **Done (2026-07-19, still later):** the coast rule, landed in `plan_doi.ks` just ahead of
   its first flight (Schuyler testing the revised planner as this was written). A new
