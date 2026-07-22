@@ -147,6 +147,20 @@ function separation_at {
   return (positionat(target, time:seconds + t) - positionat(ship, time:seconds + t)):mag.
 }
 
+// Predicted closest approach to the target over the window [t0, t1] seconds
+// from now, honoring planned nodes (separation_at does). Returns a lexicon
+// "t" = seconds from now at which the gap is smallest, "dist" = that gap in
+// metres. samples is how many points minimize_scan lays across the window
+// before refining the best bracket: a wide window hiding a brief, sharp
+// encounter needs more of them, or the scan steps clean over the dip.
+// Needs minimize_scan from optimize.ks (pulled in by common).
+function closest_approach {
+  parameter t0, t1.
+  parameter samples is 24.
+  local t_ca is minimize_scan(separation_at@, t0, t1, 2, samples).
+  return lexicon("t", t_ca, "dist", separation_at(t_ca)).
+}
+
 // Target's velocity relative to ours, t seconds from now.
 function relative_velocity_at {
   parameter t.

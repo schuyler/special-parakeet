@@ -1,33 +1,30 @@
 clearscreen.
 
-// === INTERCEPT PLANNER (transfer) ===
+// === PHASING PLANNER ===
 //
-// Put us on a tangent transfer ellipse that crosses the target's path at
-// one of its apsides. Matching velocities once there is rendezvous.ks's
-// job; this script only creates the departure node. Plans from a
-// (near-)circular orbit, after match_planes has put us in the target's
-// plane.
+// When we already fly at the target's apsis radius, there is no transfer to
+// build — only a clock to fix. This script sizes a phasing orbit: burn at
+// our next crossing of the apsis direction onto an orbit with a slightly
+// detuned period, loiter n laps, and return to the burn point exactly as the
+// target's k-th apsis passage brings it there. Matching velocities once we
+// arrive is rendezvous.ks's job; this script only creates the departure node.
 //
-// We aim only at an apsis (periapsis or apoapsis) because there the target's
+// We aim at an apsis (periapsis or apoapsis) because there the target's
 // velocity is purely horizontal, so the later match burn is a pure magnitude
-// change. The transfer is a half-ellipse from our radius r1 to the apsis
-// radius r2: its departure point (the apsis antipode) and its flight time
-// t_h are both fixed by geometry, so each passage k of the target through
-// that apsis inside the window defines one candidate. Our angular offset
-// from the antipode at the ideal departure time is that window's phasing
-// error; it becomes an along-track miss of about r2*delta at arrival, priced
-// into the score as a mid-course correction.
+// change. For each arrival passage k, the loiter time dt = t_arr - t_cross is
+// fixed; the integer n nearest dt/t1 detunes our period least and so costs
+// least, giving one candidate per k. The other apsis of the phasing orbit
+// sits at 2*a_p - r1; we reject any that dips below the floor or climbs past
+// the SOI.
 //
 // The knob is max_wait: the latest acceptable arrival, seconds from now.
 // Every candidate arriving inside it is scored by total delta-v and the
-// cheapest wins; a larger bound can only find cheaper plans. If our radius
-// already equals the target's apsis radius (within tol_coradial) there is no
-// transfer to fly — that is a phasing problem, so run phase.ks instead.
+// cheapest wins; a larger bound can only find cheaper plans. If our radius is
+// NOT the target's apsis radius (differs by more than tol_coradial) there is
+// a real transfer to fly — run intercept.ks instead.
 //
 // After adding the node we predict the closest approach it actually produces
-// and warn if that gap exceeds approach_tol. A large miss usually means the
-// geometry wanted the other strategy, or the bound was too tight to reach a
-// well-phased window.
+// and warn if that gap exceeds approach_tol.
 //
 // Next: run refine (tune the node against the real predicted miss), run next
 // (fly it), run rendezvous (plan the match burn at closest approach).
@@ -35,7 +32,7 @@ clearscreen.
 parameter max_wait is 0.        // latest arrival, s from now; 0 = default
 parameter safe_margin is 10000. // clearance over atmosphere/surface for dips
 parameter approach_tol is 2000. // warn if predicted miss exceeds this, m
-parameter tol_coradial is 0.01. // |r1-r2|/r1 at/below this: no transfer, phase
+parameter tol_coradial is 0.01. // |r1-r2|/r1 must be at/below this to phase
 
 run common.
 run orbital.
@@ -47,17 +44,22 @@ local t1 is ship:orbit:period.
 local t_tgt is target:orbit:period.
 local a_tgt is target:orbit:semimajoraxis.
 
+local floor_r is body:radius + safe_margin.
+if body:atm:exists {
+  set floor_r to body:radius + body:atm:height + safe_margin.
+}
+
 // visviva, angle_ahead, time_to_apsis, closest_approach come from orbital.ks.
 
 function describe {
   parameter c.
-  return c["aps"]
+  return c["aps"] + " n=" + c["n"]
     + ": dep +" + round((c["t_dep"] - time:seconds) / 60, 1) + "m"
     + ", arr +" + round((c["t_arr"] - time:seconds) / 60, 1) + "m"
     + ", dv " + round(c["total"], 1) + " m/s".
 }
 
-print "=== INTERCEPT PLAN (transfer) ===".
+print "=== PHASING PLAN ===".
 
 if ship:orbit:eccentricity > 0.02 {
   print "WARNING: orbit e=" + round(ship:orbit:eccentricity, 3)
@@ -83,7 +85,7 @@ local horizon is time:seconds + max_wait.
 local hint_horizon is time:seconds + 3 * max_wait.
 
 local candidates is list().
-local coradial_count is 0.
+local offradius_count is 0.
 
 for aps in list(list("pe", 0, body:radius + target:orbit:periapsis),
                 list("ap", 180, body:radius + target:orbit:apoapsis)) {
@@ -92,46 +94,49 @@ for aps in list(list("pe", 0, body:radius + target:orbit:periapsis),
   local r2 is aps[2].
   local t_aps0 is time:seconds + time_to_apsis(target:orbit, aps_m).
 
-  if abs(r1 - r2) / r1 <= tol_coradial {
-    // We already fly at this apsis radius, so the half-ellipse degenerates
-    // to a point: there is nothing to transfer, only a clock to fix. That
-    // is phase.ks's problem, not ours; skip this apsis.
-    set coradial_count to coradial_count + 1.
-    print aps_name + " is within " + round(tol_coradial * 100, 1)
-      + "% of our radius; no transfer there (phase territory).".
+  if abs(r1 - r2) / r1 > tol_coradial {
+    // Our radius and this apsis differ enough that a real half-ellipse links
+    // them: that is intercept.ks's transfer, not a phasing problem. Skip it.
+    set offradius_count to offradius_count + 1.
+    print aps_name + " is " + round(abs(r1 - r2) / r1 * 100, 1)
+      + "% off our radius; that is a transfer (intercept territory).".
   } else {
-    // Tangent transfer: the departure point is fixed (the apsis antipode)
-    // and so is the flight time, so each target apsis passage k defines one
-    // candidate. Our angular offset from the antipode at the ideal departure
-    // time is this window's phasing error: it becomes an along-track miss of
-    // about r2 * delta at arrival, priced here as an impulsive fix applied
-    // with half the transfer still to fly.
-    local a_t is (r1 + r2) / 2.
-    local t_h is constant:pi * sqrt(a_t ^ 3 / mu).
-    local dv_dep is visviva(r1, a_t) - v1.
-    local dv_arr is abs(visviva(r2, a_tgt) - visviva(r2, a_t)).
+    // Burn at our next crossing of the apsis direction, loiter n laps on an
+    // orbit of period (t_arr - t_cross) / n, and return exactly as the
+    // target's k-th apsis passage brings it to the burn point. For each k the
+    // integer n nearest dt/t1 detunes our period least and so costs least.
+    local aps_dir is positionat(target, t_aps0) - body:position.
+    local t_cross is time:seconds + angle_ahead(aps_dir) / 360 * t1.
+    if t_cross < time:seconds + 120 {
+      set t_cross to t_cross + t1.
+    }
     local k is 0.
     until t_aps0 + k * t_tgt > hint_horizon or k > 100 {
       local t_arr is t_aps0 + k * t_tgt.
-      local t_dep is t_arr - t_h.
-      if t_dep > time:seconds + 60 {
-        local aps_dir is positionat(target, t_arr) - body:position.
-        local delta is abs(angle_ahead(aps_dir, t_dep) - 180).
-        local dv_fix is r2 * delta * constant:degtorad / max(1, t_h / 2).
-        candidates:add(lexicon(
-          "aps", aps_name,
-          "t_dep", t_dep, "t_arr", t_arr,
-          "dv_dep", dv_dep, "dv_arr", dv_arr,
-          "total", abs(dv_dep) + dv_arr + dv_fix)).
+      local dt is t_arr - t_cross.
+      if dt > 0.5 * t1 {
+        local n is max(1, round(dt / t1)).
+        local t_p is dt / n.
+        local a_p is (mu * (t_p / (2 * constant:pi)) ^ 2) ^ (1 / 3).
+        local r_other is 2 * a_p - r1.
+        if r_other > floor_r and r_other < body:soiradius * 0.9 {
+          local dv_p is visviva(r1, a_p) - v1.
+          local dv_arr is abs(visviva(r1, a_tgt) - visviva(r1, a_p)).
+          candidates:add(lexicon(
+            "aps", aps_name, "n", n,
+            "t_dep", t_cross, "t_arr", t_arr,
+            "dv_dep", dv_p, "dv_arr", dv_arr,
+            "total", abs(dv_p) + dv_arr)).
+        }
       }
       set k to k + 1.
     }
   }
 }
 
-if coradial_count = 2 {
-  print "Both apsides sit at our radius: this is a phasing problem, not a".
-  print "transfer. Run phase.ks instead.".
+if offradius_count = 2 {
+  print "Neither apsis is at our radius: this is a transfer, not a phasing".
+  print "problem. Run intercept.ks instead.".
 } else {
   // Split candidates by the bound; track the best beyond it for the hint.
   local in_bound is list().
@@ -187,18 +192,18 @@ if coradial_count = 2 {
     print "Estimated match burn at arrival: " + round(winner["dv_arr"], 1) + " m/s.".
 
     // Approach gate: with the departure node in the flight plan, ask what gap
-    // the transfer actually leaves at the encounter. positionat honors the
-    // node, so this is the real predicted miss, not the seed's estimate. The
-    // dip sits within half a target period of the predicted arrival, so scan
-    // a window that wide around it.
+    // the phasing orbit actually leaves at the encounter. positionat honors
+    // the node, so this is the real predicted miss, not the seed's estimate.
+    // The dip sits within half a target period of the predicted arrival, so
+    // scan a window that wide around it.
     local arr is winner["t_arr"] - time:seconds.
     local ca is closest_approach(arr - t_tgt / 2, arr + t_tgt / 2, 48).
     print "Predicted closest approach: " + round(ca["dist"]) + " m at +"
       + round(ca["t"] / 60, 1) + "m.".
     if ca["dist"] > approach_tol {
       print "WARNING: that exceeds the " + round(approach_tol) + " m tolerance.".
-      print "  The geometry may want phase.ks, or the bound is too tight to".
-      print "  reach a well-phased window. Node kept; refine may still close it.".
+      print "  The geometry may want intercept.ks, or the bound is too tight".
+      print "  to reach a well-phased window. Node kept; refine may close it.".
     }
 
     print "Next: run refine. run next. run rendezvous.".
