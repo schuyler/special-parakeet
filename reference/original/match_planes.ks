@@ -85,14 +85,17 @@ print "=== MATCH PLANES ===".
 if not hastarget {
   print "No target set.".
 } else {
-  if hasnode {
-    remove nextnode.
-  }
   local d_inc is relative_inclination().
   print "Relative inclination: " + round(d_inc, 3) + " deg.".
   if d_inc < plan_inc_matched {
     print "Planes already matched.".
   } else {
+    // Clear a pending node only now that we are actually planning one;
+    // the matched branch above must stay a true no-op, not eat a node
+    // some other planner (or a hand) left in the flight plan.
+    if hasnode {
+      remove nextnode.
+    }
     local nd is match_planes().
     print "Node in " + round(nd:eta) + "s, dv " + round(nd:deltav:mag, 1) + " m/s.".
     // positionat/velocityat honor planned nodes, so this predicts the

@@ -378,7 +378,13 @@ speculation, not planning.
   resolved after the imports. One-off numerics (scan densities, solver tolerances,
   refine's brackets) deliberately stay in the scripts beside their justifying comments.
   Deferred to a future session, per Schuyler: moving the targeting scripts to a
-  `reference/target/` folder.
+  `reference/target/` folder, plus three review findings to bundle with it — the
+  duplicated report blocks in detune/loiter (split-by-bound + best-3 selection sort),
+  refine exporting its final separation so meet stops re-scanning for it, and switching
+  the pipeline's `run common./run orbital.` to runoncepath (one meet pass currently
+  reloads both libraries ~6x). Fixed before merging: match_planes no longer removes a
+  pending node on its matched (no-op) branch, and transfer.ks is flattened to meet's
+  main()-with-early-returns shape instead of a three-level else pyramid.
 
 - **Done (2026-07-19, still later):** the coast rule, landed in `plan_doi.ks` just ahead of
   its first flight (Schuyler testing the revised planner as this was written). A new

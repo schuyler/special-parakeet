@@ -60,31 +60,34 @@ local a_tgt is target:orbit:semimajoraxis.
 
 // visviva, angle_ahead, time_to_apsis, closest_approach come from orbital.ks.
 
-print "=== TRANSFER PLAN (step 3: fix the geometry) ===".
+function main {
+  print "=== TRANSFER PLAN (step 3: fix the geometry) ===".
 
-if ship:orbit:eccentricity > plan_e_circular {
-  print "WARNING: orbit e=" + round(ship:orbit:eccentricity, 3)
-    + "; departure timing assumes near-circular.".
-}
-local rel_inc is relative_inclination().
-if rel_inc > plan_inc_warn {
-  print "WARNING: planes off by " + round(rel_inc, 2) + " deg; run match_planes first.".
-}
+  if ship:orbit:eccentricity > plan_e_circular {
+    print "WARNING: orbit e=" + round(ship:orbit:eccentricity, 3)
+      + "; departure timing assumes near-circular.".
+  }
+  local rel_inc is relative_inclination().
+  if rel_inc > plan_inc_warn {
+    print "WARNING: planes off by " + round(rel_inc, 2) + " deg; run match_planes first.".
+  }
 
-// Encounter gate: closest_approach honors pending nodes, so this asks the
-// question directly — does the flight plan as it stands already meet the
-// target? Mid-transfer the encounter sits half our (ellipse) period out,
-// always inside this window. A pending departure node's encounter usually
-// is too; when an extreme geometry pushes it past the window the gate just
-// falls through to a re-plan — the pre-gate behavior, never a wrong burn.
-local ca0 is closest_approach(0, t_ship + t_tgt, 96).
-if ca0["dist"] <= approach_tol {
-  print "Transfer collapses: the flight plan already meets the target.".
-  print "  Predicted closest approach: " + round(ca0["dist"]) + " m at +"
-    + round(ca0["t"] / 60, 1) + "m.".
-  print "Nothing to plan (a rerun here would only wipe it).".
-  print "Next: run refine to tighten it. run next. run rendezvous.".
-} else {
+  // Encounter gate: closest_approach honors pending nodes, so this asks the
+  // question directly — does the flight plan as it stands already meet the
+  // target? Mid-transfer the encounter sits half our (ellipse) period out,
+  // always inside this window. A pending departure node's encounter usually
+  // is too; when an extreme geometry pushes it past the window the gate just
+  // falls through to a re-plan — the pre-gate behavior, never a wrong burn.
+  local ca0 is closest_approach(0, t_ship + t_tgt, 96).
+  if ca0["dist"] <= approach_tol {
+    print "Transfer collapses: the flight plan already meets the target.".
+    print "  Predicted closest approach: " + round(ca0["dist"]) + " m at +"
+      + round(ca0["t"] / 60, 1) + "m.".
+    print "Nothing to plan (a rerun here would only wipe it).".
+    print "Next: run refine to tighten it. run next. run rendezvous.".
+    return.
+  }
+
   // Size up both apsides; the transfer to each is frozen by geometry, so
   // "auto" just compares their total costs. An apsis below the body's
   // safe radius (core/safety.ks) is refused outright: the transfer
@@ -130,48 +133,51 @@ if ca0["dist"] <= approach_tol {
       print "missing, the clock is wrong, not the geometry: run loiter, and".
       print "detune if loiter says the window won't come.".
     }
-  } else {
-    // Depart at our next crossing of the departure point. The departure
-    // state comes from the predicted orbit there, not a circular assumption,
-    // so a slightly eccentric loiter orbit hands over cleanly.
-    local ang is mod(angle_ahead(chosen["dir"]) - 180 + 360, 360).
-    local t_dep is time:seconds + ang / 360 * t_ship.
-    if t_dep < time:seconds + plan_min_lead {
-      set t_dep to t_dep + t_ship.
-    }
-
-    local r2 is chosen["r2"].
-    local r_dep is (positionat(ship, t_dep) - body:position):mag.
-    local v_dep is velocityat(ship, t_dep):orbit:mag.
-    local a_t is (r_dep + r2) / 2.
-    local t_h is constant:pi * sqrt(a_t ^ 3 / mu).
-    local dv_dep is visviva(r_dep, a_t) - v_dep.
-    local dv_arr is abs(visviva(r2, a_tgt) - visviva(r2, a_t)).
-
-    until not hasnode {
-      remove nextnode.
-    }
-    add node(t_dep, 0, 0, dv_dep).
-    print "Transfer to " + chosen["aps"] + ": " + round(dv_dep, 1)
-      + " m/s prograde in " + round(t_dep - time:seconds) + "s"
-      + "; arrival in " + round((t_dep + t_h - time:seconds) / 60, 1) + "m.".
-    print "Estimated match burn at arrival: " + round(dv_arr, 1) + " m/s.".
-
-    // Approach gate: with the node in the flight plan, ask what gap the
-    // transfer actually leaves at the encounter. positionat honors the node,
-    // so this is the real predicted miss. The dip sits within half a target
-    // period of the predicted arrival, so scan a window that wide around it.
-    local arr is t_dep + t_h - time:seconds.
-    local ca is closest_approach(arr - t_tgt / 2, arr + t_tgt / 2, 48).
-    print "Predicted closest approach: " + round(ca["dist"]) + " m at +"
-      + round(ca["t"] / 60, 1) + "m.".
-    if ca["dist"] > approach_tol {
-      print "WARNING: that exceeds the " + round(approach_tol) + " m tolerance.".
-      print "  Geometry is all this script fixes; a miss this size means the".
-      print "  clock was never lined up. Run detune + loiter first, or let".
-      print "  refine try to close a modest miss.".
-    }
-
-    print "Next: run refine. run next. run rendezvous.".
+    return.
   }
+
+  // Depart at our next crossing of the departure point. The departure
+  // state comes from the predicted orbit there, not a circular assumption,
+  // so a slightly eccentric loiter orbit hands over cleanly.
+  local ang is mod(angle_ahead(chosen["dir"]) - 180 + 360, 360).
+  local t_dep is time:seconds + ang / 360 * t_ship.
+  if t_dep < time:seconds + plan_min_lead {
+    set t_dep to t_dep + t_ship.
+  }
+
+  local r2 is chosen["r2"].
+  local r_dep is (positionat(ship, t_dep) - body:position):mag.
+  local v_dep is velocityat(ship, t_dep):orbit:mag.
+  local a_t is (r_dep + r2) / 2.
+  local t_h is constant:pi * sqrt(a_t ^ 3 / mu).
+  local dv_dep is visviva(r_dep, a_t) - v_dep.
+  local dv_arr is abs(visviva(r2, a_tgt) - visviva(r2, a_t)).
+
+  until not hasnode {
+    remove nextnode.
+  }
+  add node(t_dep, 0, 0, dv_dep).
+  print "Transfer to " + chosen["aps"] + ": " + round(dv_dep, 1)
+    + " m/s prograde in " + round(t_dep - time:seconds) + "s"
+    + "; arrival in " + round((t_dep + t_h - time:seconds) / 60, 1) + "m.".
+  print "Estimated match burn at arrival: " + round(dv_arr, 1) + " m/s.".
+
+  // Approach gate: with the node in the flight plan, ask what gap the
+  // transfer actually leaves at the encounter. positionat honors the node,
+  // so this is the real predicted miss. The dip sits within half a target
+  // period of the predicted arrival, so scan a window that wide around it.
+  local arr is t_dep + t_h - time:seconds.
+  local ca is closest_approach(arr - t_tgt / 2, arr + t_tgt / 2, 48).
+  print "Predicted closest approach: " + round(ca["dist"]) + " m at +"
+    + round(ca["t"] / 60, 1) + "m.".
+  if ca["dist"] > approach_tol {
+    print "WARNING: that exceeds the " + round(approach_tol) + " m tolerance.".
+    print "  Geometry is all this script fixes; a miss this size means the".
+    print "  clock was never lined up. Run detune + loiter first, or let".
+    print "  refine try to close a modest miss.".
+  }
+
+  print "Next: run refine. run next. run rendezvous.".
 }
+
+main().
