@@ -75,19 +75,67 @@ when airspeed < 800 then {
   sas on.
 }
 
-until airspeed < 100 {
+// === FLIGHT RECORDER ===
+// One CSV row per second, from atmospheric interface to touchdown. Lines
+// beginning '#' are the numbers the flight is judged against. The columns
+// serve three questions, all ahead of any pitch-feedback controller:
+//  - tr_lng and kep_lng against the final lng row: which landing predictor
+//    converges, how early, and how monotonically;
+//  - steer_err and angvel against q: how firmly the craft holds the
+//    commanded pitch across the envelope — the margin any future pitch
+//    excursion would spend. steer_err means "held attitude" only while
+//    steering is locked, above 800 m/s;
+//  - q and airspeed: where the authority window for range control opens
+//    and closes.
+// q and angvel are logged as kOS reports them and compared only against
+// themselves.
+local flightlog is "entry_flight.csv".
+if exists(flightlog) { deletepath(flightlog). }
+log "# ENTRY FLIGHT  " + ship:name + "  mass " + round(ship:mass, 2)
+    + " t  pitch " + pitch to flightlog.
+log "# orbit  " + round(ship:orbit:periapsis) + " x "
+    + round(ship:orbit:apoapsis) + " m  lng "
+    + round(ship:geoposition:lng, 2) to flightlog.
+log "t,alt,airspeed,v_vert,q,pitch_cmd,pitch_act,aoa,steer_err,angvel,tr_lng,kep_lng,lng"
+    to flightlog.
+
+// kep_lng arrives as a string: the drag-free impact point only exists once
+// drag has pulled periapsis underground, and before that the column is
+// empty. tr_lng goes empty the same way when Trajectories has no impact.
+function log_state {
+  parameter kep_lng is "".
+  local tr_lng is "".
+  if addons:tr:available and addons:tr:hasimpact {
+    set tr_lng to round(addons:tr:impactpos:lng, 3).
+  }
+  log round(time:seconds, 1) + "," + round(altitude) + ","
+      + round(airspeed, 1) + "," + round(verticalspeed, 1) + ","
+      + round(ship:q, 5) + "," + round(pitch, 1) + ","
+      + round(90 - vang(up:vector, ship:facing:vector), 1) + ","
+      + round(vang(srfprograde:vector, ship:facing:vector), 1) + ","
+      + round(vang(hdg:vector, ship:facing:vector), 1) + ","
+      + round(ship:angularvel:mag, 4) + ","
+      + tr_lng + "," + kep_lng + "," + round(ship:geoposition:lng, 3)
+      to flightlog.
+}
+
+local t_logged is 0.
+until ship:status = "LANDED" or ship:status = "SPLASHED" {
+   local kep_lng to "".
    if periapsis <= 0 {
      local t_land to landing_time().
-     local pos to positionat(ship, time:seconds + t_land).
-     local site to ship:body:geopositionof(pos).
+     local site to landing_site(t_land).
+     set kep_lng to round(site:lng, 3).
      print "Landing in " + floor(t_land / 60) + ":" + floor(mod(t_land, 60)) + " at (" + round(site:lat,3) + "º, " + round(site:lng, 3) + "º)." at (1,20).
    }
-   //if site:lng > -72 {
-   //  set pitch to min(pitch + 1, 20).
-   //} else if site:lng < -77 {
-   //  set pitch to max(pitch - 1, 0).
-   //}
    print "Air pressure: " + round(ship:body:atm:altitudepressure(ship:altitude),4) at (1,19).
+   if time:seconds - t_logged >= 1 {
+     log_state(kep_lng).
+     set t_logged to time:seconds.
+   }
 }
+log "# down  lng " + round(ship:geoposition:lng, 3) + "  airspeed "
+    + round(airspeed, 1) to flightlog.
+print "Down at " + round(ship:geoposition:lng, 3) + " deg. The witness is entry_flight.csv.".
 
 
