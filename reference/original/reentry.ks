@@ -33,7 +33,10 @@ function compass_for {
 // gimbal-locks near polar orbits.
 lock hdg to heading(compass_for(srfprograde:vector), pitch, 0).
 lock steering to hdg.
-wait until steering_aligned_to(hdg:vector).
+
+if altitude > 70000 {
+  wait until steering_aligned_to(hdg:vector).
+}
 
 print "Disabling rocket engines and re-enabling jet engines.".
 local en_list is list().
@@ -47,11 +50,13 @@ for en in en_list {
   }
 }
 
+if altitude > 70000 {
+  set warp to 2.
+  print "Warping to atmospheric re-entry.".
 
-set warp to 2.
-print "Warping to atmospheric re-entry.".
+  wait until altitude < 72000.
+}
 
-wait until altitude < 72000.
 panels off.
 
 set warpmode to "physics".
