@@ -151,6 +151,21 @@ if in_bound:length = 0 {
     print "Loiter " + round((winner["t_dep"] - time:seconds) / t1, 1)
       + " laps (" + round((winner["t_dep"] - time:seconds) / 60, 1)
       + " min), then run transfer.".
+
+    // More than a full lap of coasting to sit through: drop a stock alarm
+    // so the window doesn't have to be watched by hand. Fire it
+    // plan_alarm_lead before departure, and only if the alarm addon is
+    // installed.
+    if winner["t_dep"] - time:seconds > t1 {
+      if addons:alarmclock:available {
+        local a is addalarm(ship:name,
+          winner["t_dep"] - plan_alarm_lead,
+          "Loiter window (" + winner["aps"] + "): run transfer.").
+        print "Alarm set " + round(a:remaining / 60, 1) + " min out.".
+      } else {
+        print "Stock alarm clock addon not found; no alarm set.".
+      }
+    }
   } else {
     print "No natural window inside the bound comes closer than "
       + round(winner["dv_fix"], 1) + " m/s.".

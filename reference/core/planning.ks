@@ -39,6 +39,7 @@ global plan_matched_dv is 0.5.    // m/s: velocities count as matched
 global plan_spent_dv is 0.2.      // m/s: a node this small is a spent one
 global plan_min_lead is 60.       // s: youngest flyable departure
 global plan_burn_lead is 120.     // s: youngest plannable burn; window buffer
+global plan_alarm_lead is 60.     // s: how early a stock alarm fires before its event
 global plan_hint_factor is 3.     // look this far past max_wait for hints
 global plan_hint_better is 0.8.   // hint only if beyond-bound beats this fraction
 
