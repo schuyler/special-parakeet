@@ -419,59 +419,77 @@ function ground_track_distance {
     return vang(u_track, u_target) * constant:degtorad * body_:radius.
 }
 
-// The earliest pass: when does the ground track next come within
-// tolerance metres of the target? The search window is one revolution at
-// a time, because that is the scale the objective is structured on:
-// within a revolution the distance to the target dips at most twice —
-// an ascending and a descending pass — which minimize_scan's two dozen
+// How close does the ground track come to a target inside a search
+// window, and when? The window is walked one revolution at a time,
+// because that is the scale the objective is structured on: within a
+// revolution the distance to the target dips at most twice — an
+// ascending and a descending pass — which minimize_scan's two dozen
 // samples resolve, where bare ternary search would not (two dips is not
-// unimodal) and one scan across all the revolutions at once would let
-// the sample step outgrow the dips. Each revolution the body's rotation
+// unimodal) and one scan across the whole window at once would let the
+// sample step outgrow the dips. Each revolution the body's rotation
 // slides the track one synodic step of longitude westward across the
-// target, so the windows genuinely differ, and the walk stops at the
-// first one whose best approach is inside tolerance — the pilot's
-// question is the earliest good-enough pass, not a marginally closer
-// one days later.
+// target, so the sub-windows genuinely differ. A window that is not a
+// whole number of revolutions ends in a short one.
 //
-// Returns a lexicon. "ok" true means time/eta/closest name a pass
-// within tolerance. "ok" false means max_orbits revolutions held no
-// such pass, and the closest one found rides along in the same keys —
-// both to say how near a miss it was and because some misses are
-// structural: a target latitude beyond the orbit's inclination is out
-// of the track's reach on any revolution. Assumes a closed orbit (the
-// period is the window). Maneuver nodes are not consulted: this asks
-// about the orbit as it stands.
+// tolerance is metres of acceptable miss, and it selects the question.
+// Positive, the walk stops at the first sub-window whose best approach
+// is inside it: the earliest good-enough pass. Zero or less, no approach
+// is ever good enough, so the walk runs the window out and what comes
+// back is the closest approach in it.
+//
+// t0 is when the search starts, and it must match the state orbit_
+// describes. It defaults to now, for the orbit the ship is on. A pending
+// node's orbit is the patch after the burn, so ask about it by passing
+// that patch and the node's time together.
+//
+// Returns a lexicon. "eta" is seconds from now, not from t0. "ok" is
+// true when the approach is within tolerance, so it is always false for
+// a closest-approach search. A miss still reports its closest approach —
+// both to say how near it was and because some misses are structural: a
+// target latitude beyond the orbit's inclination is out of the track's
+// reach on any revolution. An open orbit has no period to walk and
+// returns "distance" -1.
 function ground_target_approach {
     parameter target_geo.           // a GeoCoordinates target
     parameter tolerance.            // metres of acceptable miss
-    parameter max_orbits is 8.      // how many revolutions to walk
+    parameter window is -1.         // seconds to search; -1 is five revolutions
     parameter orbit_ is ship:orbit.
+    parameter t0 is time.           // when the search starts
     parameter epsilon is 1.         // pass-time precision, seconds
     parameter samples is 24.        // scan density per revolution
 
-    local t0 is time.
+    local best is lexicon("ok", false, "distance", -1).
+    local period is orbit_:period.
+    if period <= 0 { return best. }
+
+    local span is window.
+    if span < 0 { set span to 5 * period. }
+    if span <= 0 { return best. }
+
+    local t_ref is t0:seconds.
+    local t_now is time:seconds.
     local dist is {
         parameter dt.
         return ground_track_distance(t0 + dt, target_geo, orbit_).
     }.
 
-    local best is lexicon("ok", false, "distance", -1).
+    local walked is 0.
     local rev is 0.
-    until rev >= max_orbits {
-        local dt is minimize_scan(dist,
-            rev * orbit_:period, (rev + 1) * orbit_:period,
-            epsilon, samples).
+    until walked >= span {
+        local hi is min(walked + period, span).
+        local dt is minimize_scan(dist, walked, hi, epsilon, samples).
         local d is dist(dt).
         if best["distance"] < 0 or d < best["distance"] {
             set best to lexicon(
-                "ok", d <= tolerance,
+                "ok", tolerance > 0 and d <= tolerance,
                 "time", t0 + dt,
-                "eta", dt,
+                "eta", t_ref + dt - t_now,
                 "distance", d,
                 "rev", rev,
                 "closest", geoposition_at(t0 + dt, orbit_)).
         }
-        if d <= tolerance { break. }
+        if tolerance > 0 and d <= tolerance { break. }
+        set walked to hi.
         set rev to rev + 1.
     }
     return best.

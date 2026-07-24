@@ -1,48 +1,76 @@
-// next_pass.ks — when does the current orbit next pass near a ground
-// target? Prediction only: walks up to max_orbits revolutions ahead with
-// core/kepler's ground_target_approach and reports the earliest pass
-// within tolerance. Nothing here steers, burns, or warps, and a pending
-// maneuver node is not consulted — the question is about the orbit as it
-// stands.
+// next_pass.ks — how close does the ground track come to a prospective
+// landing site, and how long until it gets there? Walks a search window
+// and reports the closest approach inside it: time to overflight, the
+// miss distance, and the point on the track where it happens. Prediction
+// only; nothing here steers, burns, or warps.
+//
+// A pending maneuver node is honored. The node's orbit is the patch the
+// ship flies after the burn, so the search starts at the node rather than
+// now — asking the same question of the trajectory being planned.
 
 @lazyglobal off.
 
 parameter lat is 0.
 parameter lng is 0.
-parameter tolerance is 10000.   // metres of acceptable ground-track miss
-parameter max_orbits is 8.
+parameter window is -1.         // seconds to search; -1 is five revolutions
+parameter tolerance is 10000.   // metres of miss worth calling a pass
 
 run "../core/kepler".
 
 clearscreen.
 print "=== NEXT PASS ===".
 
-local tgt is body:geopositionlatlng(lat, lng).
-print "target " + round(lat, 4) + " " + round(lng, 4) + ", terrain "
-    + round(tgt:terrainheight) + " m; tolerance "
-    + round(tolerance / 1000, 1) + " km.".
+// Which trajectory the question is about, and the instant the ship is on
+// it. A node's patch describes nothing until its burn is done.
+local orbit_ is ship:orbit.
+local t0 is time.
+local traj is "current orbit".
+if hasnode {
+  set orbit_ to nextnode:orbit.
+  set t0 to time + nextnode:eta.
+  set traj to "orbit after the pending node".
+}
 
-// The search is a few hundred Kepler solves per revolution walked; run
-// it at the processor's ceiling and put the setting back.
-local ipu_prior is config:ipu.
-set config:ipu to 2000.
-local pass is ground_target_approach(tgt, tolerance, max_orbits).
-set config:ipu to ipu_prior.
+local body_ is orbit_:body.
+local tgt is body_:geopositionlatlng(lat, lng).
+print "target " + round(lat, 4) + " " + round(lng, 4) + " on " + body_:name
+    + ", terrain " + round(tgt:terrainheight) + " m.".
 
-if pass["distance"] < 0 {
-  print "No pass found; is the orbit closed?".
+if orbit_:eccentricity >= 1 {
+  print "The " + traj + " is not closed, so it has no revolution to walk.".
 } else {
-  local geo is pass["closest"].
-  print "closest pass: rev " + pass["rev"] + ", eta " + round(pass["eta"])
-      + " s (" + round(pass["eta"] / 60, 1) + " min), miss "
-      + round(pass["distance"] / 1000, 2) + " km.".
-  print "ground track there: " + round(geo:lat, 4) + " "
-      + round(geo:lng, 4) + ".".
-  if pass["ok"] {
-    print "Within tolerance.".
+  local span is window.
+  if span < 0 { set span to 5 * orbit_:period. }
+
+  print "searching the " + traj + " for " + round(span / 60, 1) + " min ("
+      + round(span / orbit_:period, 2) + " revolutions).".
+
+  // The search is a few hundred Kepler solves per revolution walked; run
+  // it at the processor's ceiling and put the setting back.
+  local ipu_prior is config:ipu.
+  set config:ipu to 2000.
+  // Tolerance zero: no approach counts as good enough, so the walk runs
+  // the whole window and returns the closest one rather than the first
+  // acceptable one.
+  local pass is ground_target_approach(tgt, 0, span, orbit_, t0).
+  set config:ipu to ipu_prior.
+
+  if pass["distance"] < 0 {
+    print "No approach found.".
   } else {
-    print "NOT within tolerance. A target latitude beyond the orbit's"
-        + " inclination (" + round(ship:orbit:inclination, 1) + " deg)"
-        + " can never do better; otherwise more revolutions might.".
+    local geo is pass["closest"].
+    print "closest approach: rev " + pass["rev"] + ", eta "
+        + round(pass["eta"]) + " s (" + round(pass["eta"] / 60, 1)
+        + " min), miss " + round(pass["distance"] / 1000, 2) + " km.".
+    print "ground track there: " + round(geo:lat, 4) + " "
+        + round(geo:lng, 4) + ".".
+    if pass["distance"] <= tolerance {
+      print "Within " + round(tolerance / 1000, 1) + " km tolerance.".
+    } else {
+      print "Outside the " + round(tolerance / 1000, 1) + " km tolerance."
+          + " A target latitude beyond the orbit's inclination ("
+          + round(orbit_:inclination, 1) + " deg) can never do better;"
+          + " otherwise a longer window might.".
+    }
   }
 }

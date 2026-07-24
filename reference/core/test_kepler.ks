@@ -128,12 +128,45 @@ function test_ground_target_approach {
     // choosing the target and starting the search.
     local probe is ship:orbit:period / 4.
     local tgt is geoposition_at(time + probe).
-    local pass is ground_target_approach(tgt, 1000, 4).
+    local pass is ground_target_approach(tgt, 1000, 4 * ship:orbit:period).
     print "== Ground Target Approach Test ==".
     print "ok: " + pass["ok"] + " (want True).".
     print "eta: " + round(pass["eta"], 1) + " s (want ~" + round(probe) + ").".
     print "rev: " + pass["rev"] + " (want 0).".
     print "distance: " + round(pass["distance"], 1) + " m (want ~0).".
+    print "".
+}
+
+function test_ground_target_closest {
+    // Tolerance zero asks the other question: walk the whole window and
+    // return the closest approach in it. The same quarter-revolution
+    // sub-point is still the answer, but "ok" is false because nothing
+    // can satisfy a tolerance of zero, and the walk runs all the way out
+    // instead of stopping at the first acceptable pass.
+    local probe is ship:orbit:period / 4.
+    local tgt is geoposition_at(time + probe).
+    local pass is ground_target_approach(tgt, 0, 2 * ship:orbit:period).
+    print "== Ground Target Closest Test ==".
+    print "ok: " + pass["ok"] + " (want False).".
+    print "eta: " + round(pass["eta"], 1) + " s (want ~" + round(probe) + ").".
+    print "rev: " + pass["rev"] + " (want 0).".
+    print "distance: " + round(pass["distance"], 1) + " m (want ~0).".
+    print "".
+}
+
+function test_ground_target_partial_window {
+    // A window shorter than a revolution ends in a short sub-window
+    // rather than overrunning it. The target is a sub-point three
+    // quarters of a revolution out, which half a period never reaches,
+    // so the track is still closing when the window ends and the closest
+    // approach sits on the far edge — never past it.
+    local half is ship:orbit:period / 2.
+    local tgt is geoposition_at(time + 0.75 * ship:orbit:period).
+    local pass is ground_target_approach(tgt, 0, half).
+    print "== Ground Target Partial Window Test ==".
+    print "eta: " + round(pass["eta"], 1) + " s (want ~" + round(half)
+        + ", the window edge, and never above it).".
+    print "rev: " + pass["rev"] + " (want 0).".
     print "".
 }
 
@@ -147,5 +180,7 @@ test_body_longitude().
 test_geoposition_at().
 test_ground_track_distance().
 test_ground_target_approach().
+test_ground_target_closest().
+test_ground_target_partial_window().
 //test_time_to_longitude().
 //print "Longitude: " + body_longitude(time) + ", longitude + 1 orbit: "  + body_longitude(time+synodic_period()).
