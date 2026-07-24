@@ -34,10 +34,16 @@ run "common".
 // craft's dial: the default is KSC, the zero-lift aim, and flights move it
 // west per craft by the glide they demonstrate.
 parameter target_lng is -74.5.
-// Degrees of longitude the burn point sits west of the target. Half a turn is
-// where lowering the far side of a near-circular orbit is cheapest — an
-// argument from geometry, free of the craft and the body.
-parameter burn_lead is 180.
+// Degrees of longitude the burn point sits west of the target. Half a turn
+// is the Δv optimum — tangential, lowering the far side of the orbit — but
+// it also buys the shallowest entry that still comes down, and shallow is
+// the expensive direction here: downrange sensitivity to burn error and to
+// the unmodeled lift both peak there, so the craft's aim dial wanders
+// flight to flight, and the plane rides thin air for minutes of physics
+// warp. 135 trades a few tens of m/s for a steeper, more repeatable entry.
+// The plan log prices the trade at any lead, so the choice stays
+// falsifiable without a flight.
+parameter burn_lead is 135.
 // The shallow bound of the Δv search: the first trial periapsis, as a
 // fraction of the atmosphere's height. A bracket bound, not an aim — it only
 // needs to sit shallow enough that its impact, if Trajectories finds one at
