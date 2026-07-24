@@ -130,5 +130,3 @@ print "Before inclination: " + round(ship:orbit:inclination, 3).
 local nd is change_inclination(target_incl).
 add nd.
 print "Normal dV: " + round(nd:normal, 3).
-run next.
-print "After inclination: " + round(ship:orbit:inclination, 3).
