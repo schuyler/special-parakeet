@@ -1,27 +1,9 @@
 # The braking→terminal handoff: a contract, not a coincidence
 
 *A design note, downstream of `powered-descent-invariants.md`: it revises that note's
-invariants 2 (targeting) and 5 (handoff continuity), first on paper and then through an
-eight-flight campaign (2026-07-18/19) that ended with terminal flying Klumpp's guidance.
-Everything in the invariants note still stands; this narrows two of its clauses and
-records what the flights taught. Companion: the descent lives in `powered_descent_min.ks`;
-the planner it contracts with is `plan_doi.ks`.*
-
-## The founding diagnosis (flight 1: 71 m)
-
-A TWR-27 landing missed by 71 m, all down-range overshoot, from two independent failures
-hiding behind each other:
-
-1. **Terminal's lateral authority was a fiction.** The whisper law commanded total thrust
-   along a slightly tilted hold, so only `sin(θ)` of it landed horizontally — ~0.02 m/s²
-   at the angles actually commanded. It could not null a walking pace.
-2. **Braking aimed the arc's endpoint onto the site with the handoff velocity still
-   live.** `reach == dist` reserved nothing for the residual, so ~5 m/s arrived directly
-   over the target as pure overshoot.
-
-Fixing only one buys either a strong controller cleaning up a mis-aimed arc, or a clean
-handoff to a controller too weak to hold it. Both had to change, as separate
-responsibilities that do not cover for each other.
+invariants 2 (targeting) and 5 (handoff continuity). Everything in the invariants note
+still stands; this narrows two of its clauses. Companion: the descent lives in
+`powered_descent.ks`; the planner it contracts with is `plan_doi.ks`.*
 
 ## The principle: each phase hands the next a workable state
 
@@ -40,54 +22,14 @@ fraction of the lateral cap (`a_lat_max = g0·tan(tilt_max)`). Braking aims
 `reach + d_handoff == dist`; the residual coasts in; terminal brakes it to rest. Derived,
 body-aware, craft-free.
 
-## The campaign: eight flights, 71 m → 5 m
+Two facts make the debt real, and they are separate responsibilities that cannot cover for
+each other. Terminal's lateral authority is only `sin(θ)` of total thrust at the angles it
+actually commands — a hundredth of a m/s² at a slight tilt, which will not null a walking
+pace. And an arc aimed `reach == dist` reserves nothing for the residual, so the seam's
+horizontal speed arrives directly over the target as pure overshoot. Braking has to buy the
+offset; terminal cannot manufacture it.
 
-Each flight falsified something specific. In order:
-
-1. **71 m** (whisper law): the founding diagnosis above.
-2. **9 m ×2** (first revision: attitude seam, up-range aim, P-controller null): two
-   defects. The seam exit `pitch <= -tilt_max` was the *complement* of the intended
-   angle — handoff at retrograde 60° from plumb, not 30°, with a 30° attitude slew at
-   the "attitude-continuous" seam and 23.5 m/s of residual. And the P-loop tracking a
-   decelerating reference carries a standing error of `a/k` (4.6 m/s at the old gain):
-   the craft overflew the site at 1000 m and walked back too slowly. *Lesson: a pure
-   P-loop cannot track a decelerating reference without feedforward; the overshoot was
-   built into the law.*
-3. **Hover-wobble, aborted**: over the pad, saturated commands flip-flopping, descent
-   stalled into a dv-burning hover. Attributed first to the stopping law's cusp
-   (`vc²/2d` demands `a_eff` at every scale — real, fixed by flooring the divisor at
-   `h_pad`), then to thrust pumping through attitude slews (the alignment gate came from
-   this theory; the new drift log column falsified its "circling" half).
-4. **15 m** (floor + gate in): still dancing at the gate boundary. The actual root
-   cause, present since flight 2: `k_trim` was derived from the *seed* solve's seam, and
-   the seed's arc — integrated 60 s early, burning through what the craft actually
-   coasts — hits `endpoint`'s ground exit, handing the gain a zero fall time. Gain 3.0
-   instead of 0.024: a 125× error explaining every "yawing right over the target"
-   symptom, with the ignition assertion's `WARN ... vs fall 0 s` as its fingerprint on
-   every flight. Fixed by computing gain and workability from the live handoff state.
-   *Lessons: a derived constant is only as good as the state it is derived from; and
-   when a controller's behavior is arithmetically impossible under the intended
-   constants, check the constants as flown before inventing dynamics.*
-5. **17 m** (correct gain): the law finally parked — plumb, engine off, ~1 m offset at
-   mid-fall. Then a whisper correction re-engaged at the deadzone boundary (no
-   hysteresis) and rode its 30° lean into the *ungated* suicide burn: the first
-   full-throttle second fired 25° off plumb and threw ~5 m/s of drift. The entire miss
-   manufactured in the last 40 m. *Lesson: near the end of a descent, the cost of a
-   correction is not its thrust but the attitude state it leaves behind for the next,
-   less forgiving phase.*
-6. **7 m** (consequence latch + plumb fence): lateral law latched on predicted miss
-   rather than command size, and a fence ends the lateral game one attitude-swing before
-   burn ignition. Burn fired at 1.3° facing error; the injection failure died here.
-7. **5 m** (Klumpp): the guidance swap (below). Landed at the latch's designed
-   tolerance with a plumb burn — but chattered visibly mid-fall because the latch's
-   engage and release thresholds had been collapsed to the same line.
-8. **2 m** (band + proportional lean): the design's promise, kept. One latch
-   engagement for the whole fall; Klumpp's command tapered 0.45 → whisper while the
-   lean walked 26° → plumb with `facing_err` ~0.1° throughout — no slews, no chatter;
-   37 rows parked plumb; burn ignition at 1.3°; touchdown drift ~1 m/s; dv within
-   4 m/s of the earlier flights. Every item on the falsification list passed.
-
-## The architecture as flown (2026-07-19)
+## The architecture as flown
 
 The phase structure is Apollo's, reappropriated wholeheartedly:
 
@@ -126,9 +68,7 @@ Around the continuous law, three discrete guards, each earned by a flight:
 And the delivery: lean scales with command — `tan(lean) = sqrt(a_lat/a_lat_max) ·
 tan(tilt_max)` — so `tilt_max` is a true maximum, reached only at saturation; the
 vertical component stays ≤ `g0` (equality only at the cap), so corrections never climb;
-whispers cost nods, not 30° slews. The fixed-at-max lean it replaced was the correct fix
-for the `sin(θ)` suppression when every command was saturated, and pure attitude
-overhead once Klumpp made every command gentle.
+whispers cost nods, not 30° slews.
 
 ## Constants, and what argues each
 
@@ -150,17 +90,6 @@ The divergence is tolerated because the seam ends braking earlier than a low-spe
 would, so the planner's certified corridor remains conservative — restate this check if
 the seam ever moves later. The aim shift (`d_handoff`, tens of metres against an
 11–14 km arc) stays far below anything the planner would have to model.
-
-## To falsify in flight
-
-- Handoff attitude continuous: no `facing_err` spike at the BRAKE→TERMINAL row.
-- Klumpp's command starts ≈ `6·ZEM/t²` under the cap and *tapers*; at the low gate both
-  ZEM and drift are ≈ 0 without the fence having to clamp anything.
-- At most one or two latch engagements per fall; lean during them proportional to the
-  command, never `tilt_max` for a whisper.
-- Burn ignition rows: `facing_err` ≈ 0, no drift jump across ignition.
-- Touchdown: miss ≤ `h_pad`, horizontal velocity a few tenths; dv within a few m/s of
-  the retrograde solve's prediction (the braking-optimality claim).
 
 ## Standing lessons
 

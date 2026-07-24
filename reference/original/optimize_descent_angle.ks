@@ -1,10 +1,12 @@
-// optimize_descent_angle.ks — mission planning, the half plan_doi.ks leaves
-// to judgment: survey the approach and solve gamma, the descent angle.
-// Design: notes/capability-driven-descent.md (piece 3, "the smart planner").
-// gamma is an input to plan_doi.ks and an output of this script; everything
-// downstream of gamma — h_pdi, the lead, the node — stays plan_doi's. Run
-// this, read the slope and the obstacle that forced it, then run plan_doi
-// with the answer.
+// optimize_descent_angle.ks — survey the approach and solve gamma, the
+// descent angle.
+//
+// ORPHANED: plan_doi.ks takes no gamma. It fixes the PDI altitude outright
+// and leaves terrain clearance to the pilot's eye on the map, so nothing
+// consumes this script's output and the invocation printed at the end is
+// stale. The corridor sweep below is the only terrain tooling in the repo;
+// notes/terrain-certification.md is the design for reattaching it, and says
+// what would have to change.
 //
 // The optimum needs no search. Delta-v rises with gamma — a steeper
 // approach buys its clearance with a higher PDI, a longer brake, and more

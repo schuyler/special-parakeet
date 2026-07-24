@@ -141,8 +141,8 @@ later, better draft; the book can show the progression where instructive.
 | `kepler.ks`, `orbital.ks` (anomalies) | 8 | `kepler.ks`'s original header quip ("don't need it, see orbit.ks" — since replaced with an accurate note; see git history) is itself a good pedagogical beat: derive by hand, then learn what the API gives you |
 | `match_planes.ks`, `detune.ks`, `loiter.ks`, `transfer.ks`, `refine.ks`, `rendezvous.ks` (the closest-approach velocity match, formerly named `intercept.ks`), `meet.ks`, `next.ks`, `wait_for_launch.ks` | 9 | one script per step, each collapsible to a no-op: match planes → detune (fix the clock) → loiter (count laps; no burn) → transfer (fix the geometry) → refine node → fly → rendezvous burn. Supersedes the conflated `intercept.ks`/`phase.ks` pair (see git history) — each bundled two steps and a near-co-radial parking orbit fell between them. `meet.ks` orchestrates the whole pipeline, exiting for an alarm whenever the next wait exceeds its patience — the chapter's payoff: because every step collapses, resuming is just rerunning |
 | `dock.ks`, `dock2.ks`, `fuelxfer.ks` | 10 | |
-| `deorbit.ks`, `deorbit_simple.ks`, `deorbit_node.ks`, `drop_periapsis.ks`, `landing.ks`, `land_at_periapsis.ks`, `common.ks` (`time_to_surface`, `landing_time` Newton iteration) | 11–12 | the terrain-height Newton iteration is exactly the "numerical methods where closed form runs out" lesson |
-| `predict_landing.ks` | 11–12 | early landing-site prediction; compare to `reference/landing_v2/` for the improved approach |
+| `deorbit.ks`, `deorbit_simple.ks`, `deorbit_node.ks`, `drop_periapsis.ks`, `common.ks` (`time_to_surface`, `landing_time` Newton iteration), `reference/variants/land_at_periapsis.ks` | 11–12 | the terrain-height Newton iteration is exactly the "numerical methods where closed form runs out" lesson |
+| `reference/landing_v2/predict_datum_impact.ks`, `predict_terrain_impact.ks` | 11–12 | landing-site prediction: datum and terrain impact via Newton iteration |
 | `boostback.ks` | 12 (divert/targeting), sidebar Falcon | |
 | `aero.ks` | 14 | lift/drag computation |
 | `ssto.ks`…`ssto4.ks` | 17–18 | the iteration story of ch. 18 |
@@ -306,291 +306,63 @@ speculation, not planning.
 
 ## Status
 
-*Last updated: 2026-07-22*
+*Last updated: 2026-07-24*
 
-- **Done (2026-07-22):** rendezvous planning restructured into one spike per step, after a
-  flight test showed a near-co-radial parking orbit falling between `intercept.ks` (whose
-  only timing lever was waiting out a synodic beat that vanishes as the periods converge)
-  and `phase.ks` (whose co-radial gate refused it). The four-step decomposition, each step
-  collapsible to a no-op: `detune.ks` (change period so the clock lines up), `loiter.ks`
-  (count laps to the next transfer window; plans no burn), `transfer.ks` (the
-  Kepler-frozen half-ellipse; reads departure state from the predicted orbit so it accepts
-  a detuned handoff), `rendezvous.ks` (unchanged). `intercept.ks` and `phase.ks` deleted —
-  each conflated two adjacent steps; git history keeps them. All three new scripts are
-  **unflown**.
+### Where the code stands
 
-  Follow-up (same day): made "collapsible to a no-op" true in every reachable state, not
-  just the happy path. `transfer.ks` gained an encounter gate — before planning anything it
-  asks `closest_approach` (which honors pending nodes) whether the flight plan already
-  meets `approach_tol`; if so it collapses instead of wiping good nodes to plan a burn from
-  the middle of the ellipse, the one state its co-radial test couldn't see. `rendezvous.ks`
-  gained the guards its siblings had: a no-target check, a collapse when relative speed at
-  the encounter is already under `min_dv` (new parameter; dock2 owns the last few m/s), and
-  node cleanup before adding — it used to stack a near-zero node per rerun. Its private
-  `closest_approach` (a name collision with `orbital.ks`'s since the gate landed) is gone;
-  it now uses orbital's. Every planner in the pipeline is now safe to rerun blind at any
-  point in the procedure. Still unflown.
+- **Descent** — `reference/original/plan_doi.ks` places the DOI node;
+  `reference/original/powered_descent.ks` flies the braking arc and terminal down from it.
+  Design registers: `notes/doi-planner.md` (the planner), `notes/powered-descent-invariants.md`
+  (the flight controller), `notes/powered-descent-handoff-contract.md` (the braking→terminal
+  seam, and the constants with what argues each). `notes/terrain-certification.md` holds the
+  terrain analysis the planner currently defers to the pilot, and names where it would
+  attach. `notes/apollo-powered-descent.md` and `notes/klumpp-guidance-derivation.md` stay
+  working material until Part IV drafting reaches them; `notes/kos-facts.md` is the verified
+  API reference.
+- **Rendezvous** — one spike per step, each collapsible to a no-op: `match_planes` →
+  `detune` (change period so the clock lines up) → `loiter` (count laps to the window;
+  plans no burn) → `transfer` (the Kepler-frozen half-ellipse) → `refine` → `next` (fly
+  it) → `rendezvous` (match at closest approach). `meet.ks` orchestrates the whole
+  pipeline and exits for an alarm whenever the next wait exceeds its patience; resuming
+  is just `run meet.` again, because every completed step collapses and the orbit is the
+  only state. Shared policy: `reference/core/safety.ks` (per-body safe altitudes) and
+  `reference/core/planning.ks` (every threshold used by two or more pipeline scripts).
+  **Unflown.**
+- **Book** — `wiki/Home.md` (front page + full TOC) and
+  `wiki/Chapter-01-The-Flight-Computer.md` drafted.
 
-  Follow-up (same day, later): `meet.ks`, the master script the collapse guards were
-  quietly building toward. It runs the whole pipeline in order, flying each burn via
-  `common.ks`'s `execute_node`, and exits the moment the next wait — node or transfer
-  window — exceeds `patience` (parameter, minutes), printing the UT to set an alarm for.
-  Resuming is just `run meet.` again: no state is carried between runs (the orbit is the
-  state), an encounter gate up front skips the first three steps once the flight plan
-  already meets the target, and a startup sweep clears spent/stale nodes (`next.ks` keeps
-  the executed node; a missed alarm leaves a node in the past — both just get replanned).
-  Other parameters: `max_loiter` caps only the window search (the one unbounded wait —
-  the synodic clock can be arbitrarily slow; every other wait takes as long as it takes)
-  and `dv_budget` covers the burns still ahead of the current run, which needs no
-  cross-run bookkeeping precisely because completed steps collapse. `detune.ks` now
-  exports `detune_status` / `detune_t_dep` as globals so the orchestrator knows when the
-  window opens without duplicating the window math. Unflown, like the rest.
+### Pending
 
-  Follow-up (same day, later still): periapsis safety, audited and closed. The audit
-  found exactly one floor in the pipeline (detune's dip check) and two gaps: `refine.ks`
-  optimizes miss distance with no constraint (a round-1 ±10 m/s prograde probe moves the
-  far apsis ~30 km at LKO), and `transfer.ks` implicitly trusts the target's orbit (its
-  ellipse bottoms out at the chosen apsis radius — unsafe for a decaying target). New
-  `core/safety.ks` (imported via `common.ks`) is the policy home: `safe_alt`/`safe_radius`
-  from a per-body table — Kerbin 71 km (the atmosphere ends *sharp* at 70; the old flat
-  atm+10 km rule banned the sub-80 km parking orbits Schuyler actually launches to), Mun
-  9 km, Minmus 7 km, conservative fallback elsewhere. Wired in four places: detune's floor
-  now reads the table (`safe_margin` repurposed to extra clearance, default 0), transfer
-  refuses an apsis below the floor (the alarm-clock workflow means every plan must be safe
-  to coast unflown), refine's objective returns a floor-sloped penalty for probes whose
-  post-burn periapsis dips under `safe_alt`, and meet refuses to start from an orbit
-  already below it (laps are what a decaying orbit doesn't survive). Circularity audit
-  recorded for ch. 9's honesty box: the planners lean on circular assumptions only for
-  seeds and crossing-time proration (`ang/360·T`), warned at e > 0.02 and absorbed by
-  refine; `angle_ahead`, `time_to_apsis` (mean anomaly, exact), `closest_approach`,
-  match_planes, and rendezvous are eccentricity-proof.
+- **Targeting scripts** move to a `reference/target/` folder, bundled with three review
+  findings: the duplicated report blocks in `detune`/`loiter` (split-by-bound + best-3
+  selection sort), `refine` exporting its final separation so `meet` stops re-scanning for
+  it, and switching the pipeline's `run common./run orbital.` to `runoncepath` (one `meet`
+  pass currently reloads both libraries ~6×).
+- **Two open findings in the descent code:** the ignition fallback `f_cmd = f_max`
+  conflates `bisect`'s two bracket failures — safe either way, but the log cannot tell
+  which happened — and `bisect`'s failure path prints four lines that would tear the
+  fixed-row readout mid-burn.
+- **Terrain certification, deferred by choice.** `plan_doi.ks` fixes `pdi_height` and hands
+  clearance to the pilot's eye on the map. `notes/terrain-certification.md` is the design
+  for putting it back in software — the chord bound for the arc, the walk for the coast,
+  and `h_pdi` as the max of three demands — and names the attachment point.
+  `reference/original/optimize_descent_angle.ks` is the working corridor sweep it would
+  reuse; the script is orphaned meanwhile (its header says so) and kept for that reason.
+- **Restyle** of `wiki/Home.md` and Chapter 1 against the vendored `schuyler-docs` skill.
+  Partly structural, not just sentence-level: Chapter 1's "Mission briefing" opener is a
+  learning-objective list in promissory "you will" address, banned twice over by the
+  drafting conventions. Whether "Mission briefing" survives as a chapter convention is
+  Schuyler's call at restyle time. The restyle must also add the front-matter AI
+  disclosure the vendored skill's honesty principle calls for — no home for it exists yet.
+- **Chapter 9's honesty box** wants the circularity audit: the planners lean on circular
+  assumptions only for seeds and crossing-time proration (`ang/360·T`), warned at
+  e > 0.02 and absorbed by `refine`; `angle_ahead`, `time_to_apsis` (mean anomaly, exact),
+  `closest_approach`, `match_planes` and `rendezvous` are eccentricity-proof.
+- **Drafting convention to revisit:** the answer-don't-author template puts the opening
+  sentence before the pasted paragraphs, following the theremin source verbatim. A
+  reviewer argued the reverse ordering. Revisit if chapter 2 drafting shows it matters.
 
-  Follow-up (same day, last): the magic-constant census, acted on. New
-  `core/planning.ks` (imported via `common.ks` beside `safety.ks`) is the policy home for
-  every threshold that appeared in two or more pipeline scripts: `plan_e_circular`,
-  `plan_inc_warn`/`plan_inc_matched` (the warn/act hysteresis pair, finally documented as
-  a pair), `plan_fix_tol`, `plan_approach_tol` (meet's drifting copy of transfer's 2000 m
-  is gone), `plan_matched_dv`/`plan_spent_dv` (the Δv ladder — execute_node residual <
-  spent < matched — now stated as an ordered invariant), `plan_min_lead`/`plan_burn_lead`
-  (the lead-time ladder), the hint factor/threshold, and `default_max_wait()` — the
-  synodic bound formula that detune and loiter had duplicated verbatim (their split's one
-  scar). kOS binds parameters before `run common.`, so tunable defaults use a -1 sentinel
-  resolved after the imports. One-off numerics (scan densities, solver tolerances,
-  refine's brackets) deliberately stay in the scripts beside their justifying comments.
-  Deferred to a future session, per Schuyler: moving the targeting scripts to a
-  `reference/target/` folder, plus three review findings to bundle with it — the
-  duplicated report blocks in detune/loiter (split-by-bound + best-3 selection sort),
-  refine exporting its final separation so meet stops re-scanning for it, and switching
-  the pipeline's `run common./run orbital.` to runoncepath (one meet pass currently
-  reloads both libraries ~6x). Fixed before merging: match_planes no longer removes a
-  pending node on its matched (no-op) branch, and transfer.ks is flattened to meet's
-  main()-with-early-returns shape instead of a three-level else pyramid.
+### Next up
 
-- **Done (2026-07-19, still later):** the coast rule, landed in `plan_doi.ks` just ahead of
-  its first flight (Schuyler testing the revised planner as this was written). A new
-  `=== THE COAST ===` section after the placement passes walks the placed ellipse from the
-  DOI burn to PDI — kepler's `orbit_at`/`geoposition_at` on `nd:orbit`, one sample per ~200
-  ground-metres at periapsis speed (`coast_dx`, a local accuracy bound like `pitch_tol`), no
-  early-out because half an orbit of samples is cheap at ipu 2000 — keeps the minimum of
-  ellipse-altitude over terrain, and aborts the plan if it comes under `coast_clearance`, a
-  new 7th parameter defaulting to `landing_height` (census 6 → 7; the price of certifying
-  the one stretch nothing checked, justified by open item 1's measured ten-metre Great Flats
-  margin). The minimum and where it fell — seconds before PDI, the open item's own
-  coordinate — join `doi_plan.log`. Check is near-exact, not a model check: the coast is on
-  rails pre-burn and kOS terrain is the game's own ground; residual risks are the 200 m
-  sample spacing and the burn's own periapsis slop. `optimize_descent_angle.ks`'s header and
-  `gamma_floor` comment updated (the coast is no longer "unwritten"/"the human's risk"; the
-  floor now exists to keep the survey from proposing plans the coast walk would refuse late).
-  Open item 1 annotated settled-in-code — the clearance number itself stays judgment.
-  **Unflown**, and first in line to fly.
-
-- **Done (2026-07-19, later):** `reference/original/optimize_descent_angle.ks` — piece 3's
-  front half, new. The terrain survey that stood behind gamma as "the human's judgment" in
-  `plan_doi.ks` now exists as code: walk the approach up-range from the site and take the
-  steepest ray any obstacle demands, `gamma = max arctan((terrain + margin − h_handoff)/x)`.
-  No search: Δv rises with gamma (the trend plan_doi's sweep prices), so the optimum is the
-  shallowest certified slope — "optimize" means "find the binding obstacle". Two scoping
-  decisions, both argued in the header: (1) the design note's survey-joins-the-fixed-point
-  coupling is deferred — it only bites on an inclined orbit, and under the stack's standing
-  equatorial assumption the track through the site is the site's own parallel, so the
-  survey is pure geography: reads nothing from the ship but the body, places no node, runs
-  before the parking orbit exists, and needs no third copy of the arc march. (2) The coast
-  clearance rule (open item 1) is explicitly NOT here — it is a property of the placed
-  ellipse, so it belongs in plan_doi's verdict (walking `nd:orbit` before declaring
-  victory), which is where it should land next; until then the coast is still the human's
-  risk, and the script's header says so. Simplified the same session on a
-  derive-don't-supply review: `max_terrain_height` deleted — its only job was ending the
-  walk early, and the quarter-body span bound first on every body flown anyway (a 1° ray
-  doesn't top Minmus's 5725 m until ~330 km out, most of the way around), so the walk just
-  spans a derived quarter of the body and every parameter now has a default;
-  `terrain_margin` now defaults to `landing_height` (the same benefit of the doubt at the
-  site and up-range — one judgment, not two); reporting strides derived from the span
-  (~50 profile lines, ~5 progress notes on any body). Remaining judgments, each argued in
-  place: `gamma_floor` (1°, named for what it is — the unwritten coast rule's understudy)
-  and `dx` (open item 8's knob, 100 m); `landing_height` stays because it is the seam.
-  (Both this default and plan_doi's `coast_clearance` resolve negative-means-`landing_height`
-  in code rather than by a cross-parameter default expression — an idiom this repo has never
-  proven in kOS, and no night before a flight is the time to prove it.) Witness:
-  `gamma_survey.log` — gamma, the forcing obstacle, walk stats, and a decimated corridor
-  profile (x, terrain, ray) for plotting. **Unflown** — but unlike the flight scripts it
-  is dry-runnable: it only reads terrain, so a bridge run from any save on or around
-  Minmus exercises it end to end.
-
-- **Done (2026-07-19):** `reference/original/plan_doi.ks` revised in place to plan for
-  `powered_descent_min.ks` instead of the table-flying controller. **Flight news first**:
-  the min rendition has now flown — pinpoint Minmus landings at TWR ~37 and the same craft
-  thrust-limited to TWR ~2 (Schuyler's report), so the invariants note's predictions have
-  telemetry behind them and the min design is the one the planner should serve. Review
-  confirmed the controller has no fuel knob left: the braking Δv is fixed by PDI placement
-  (higher solved throttle = shorter burn = less gravity loss), terminal is free fall plus a
-  kinematic `f_max` arrest, and the optimal coast-then-`f_max` descent is the limit the
-  controller already contains — so efficiency lives entirely in the plan, which is what the
-  revision leans into. Changes: (1) the fixed-step `integrate_arc` replaced with min's
-  adaptive-step `endpoint`, nearly verbatim — seed from the candidate ellipse instead of
-  the live ship, accuracy bounds (`pitch_tol`, `v_frac`) as parameters so the coarse tier
-  can loosen them; still duplicated by choice, not yet a shared library. (2) The overshoot
-  allowance, half-step error probe, `x_shrink_per_f` trim gain, headroom-vs-allowance
-  check, and the deliberate arrive-long lead all deleted — the live re-solve corrects both
-  signs of error, so arriving long just holds the flown throttle above the solved one; the
-  endpoint is placed AT the site. (3) Cross-track check recast for min's τ = 20 s yaw law:
-  bias angle at PDI and the residual a τ-closure leaves at handoff, replacing the old
-  `6y/t_go²` capacity integral. (4) `f_solved` margins reported against both bounds
-  (authority to shorten and to stretch). (5) New gamma sweep: the coarse fixed point run
-  at 0.75×/1×/1.5× the asked slope, each priced (DOI + arc Δv), printed and logged — the
-  one fuel judgment, priced instead of sloganized. Parameter list 11 → 7. **Unflown**: the
-  revised planner. Open items from the review of min itself (not acted on): the ignition
-  fallback `f_cmd = f_max` conflates bisect's two bracket failures (safe either way, but
-  the log can't tell which happened), and `bisect`'s failure path prints four lines that
-  would tear the fixed-row readout mid-burn. **Follow-up (same day)**, after a parameter
-  census with Schuyler: `f_min` retired from the arc contract — the solve brackets at zero
-  throttle in both files (a no-thrust arc runs into the terrain floor, a real undershoot, so
-  the bottom end needs no tuned floor); terminal keeps its 0.05 as `f_idle`, its own idle
-  threshold, not the solve's (note: `powered_descent_min`'s positional parameter list
-  shrank — `f_max` is now 4th). `plan_doi`'s coarse tier and `f_eps` also retired: one
-  fixed point at flight fidelity (the tiers were rent paid to the fixed-step integrator),
-  bisection tolerance derived from the bracket (`f_max/4096`), and the duplicated march
-  synced to min's new terrain floor (`h <= tgt:terrainheight`). Parameter list now 6; the
-  duplicated integrator's departures from min's copy are down to one (the seed). The two
-  min-side derivations then landed as well, **both unflown**: `a_lat_max = g0·tan(tilt_max)`
-  (0.3 is revealed as Minmus's instance of exactly that — near-no-op there, real elsewhere)
-  and yaw `tau = t_go/3` frozen at ignition (closure becomes e^-3 of the PDI offset by
-  construction; the planner's verdict check updated to match, its residual warning now
-  reading "five percent of this offset is N m"). The schedule check landed too: the
-  planner's verdict now warns when terminal would ignite behind schedule at handoff
-  (`speed_handoff` vs `sqrt(2·a_dec·landing_height)` — the planner is the only program
-  holding both numbers, which is why the check lives there and not in flight). That closes
-  the parameter census; nothing from it remains unapplied. **Flight plan (Schuyler)**: next
-  session flies `powered_descent_min` first — verifying the derived `a_lat_max` (expect
-  free-fall `a_cmd` capping at ~0.28 in the log, otherwise identical) and the `t_go/3` yaw
-  law (watch the `cross` column's decay) — then the revised `plan_doi` end to end.
-
-- **Done (2026-07-18):** `notes/level-flight-fuel-optimization.md` — design note for a
-  cruise optimizer atop the `autopilot` branch's cascade: a sixth, outermost loop that
-  chooses the altitude/airspeed setpoints by minimizing measured fuel-per-metre
-  (J = ṁ/v, primary measurement is the ship's own mass delta over ~30 s windows;
-  `drag_vector()`-based D/v kept as cross-check only until its signs are validated).
-  Key decisions: step-and-compare (twiddle) rendition first, sinusoidal extremum seeking
-  only if needed; trim-gated measurement windows with turns suspended; converged trim
-  throttle as the interior-vs-boundary-optimum diagnostic (throttle < 1 ⇒ the Mach drag
-  rise picked the altitude; throttle pegged ⇒ the engine did). Companion to
-  `ssto-aero-optimization.md` (same technique, ascent phase). Feeds the Part V/VI seam
-  (ch. 16 payoff exercise). Analysis only — no code, unflown.
-
-- **Done (2026-07-18):** `notes/powered-descent-invariants.md` + `reference/original/
-  powered_descent_live.ks` — the descent's invariants worked out with Schuyler, and the
-  rendition they imply. The note establishes that the retrograde hold makes the braking
-  trajectory a one-parameter family (state + throttle → arc), so the descent table in
-  `powered_descent.ks` is a cache of a computation that can run live; everything downstream
-  of the cache's staleness (trim gain, overshoot allowance, taper, ratchet) deletes, and
-  the safety invariant collapses to one test — "does any throttle keep the arc above the
-  gate?" — run identically pre-coast and every look in flight. The script re-solves the
-  throttle from live state every few seconds (bisection over the same Euler march, seeded
-  from the ship instead of periapsis), with the gate as the floor under the command and
-  `f_max` as the ceiling. Settles capability-driven-descent.md open items 3 and 4
-  (annotated there). Also traced the lesson through the old landing family: the old
-  scripts buried periapsis below the surface (trajectory hits the site, burn is timed);
-  Apollo's inversion — periapsis safe and up-range, the burn brings you down — is what let
-  the DOI/coast/PDI/terminal phases come apart. Strong chapter spine for Part IV: the
-  phases discovered by getting them wrong. **Unflown**: the note's Predictions section
-  lists the telemetry signatures to check on first flight (throttle staircase vs
-  oscillation, handoff miss, Δv vs the 244 m/s baseline). Companion spike
-  `powered_descent_min.ks`: the same design with all envelope protection removed — ~80
-  statements that fly plus the flight recorder (kept on Schuyler's call: telemetry is the
-  working agreement, so the recorder is part of the minimum, not scaffolding; same CSV
-  columns as the siblings). Five ideas, no orbital mechanics (it only ever integrates
-  from the live ship), `landing_height` absent because the planner spent it into the
-  ellipse. Candidate for the chapter's presented listing, with `_live` as the "what a
-  flyable version adds" follow-on. Its lateral law (velocity bias, tau = 20 s) is simpler
-  than `_live`'s constant-jerk law and equally unflown.
-
-- **Done (2026-07-13):** `notes/klumpp-guidance-derivation.md` — companion to the powered-
-  descent guide, derived from a reader Q&A thread. Two things the sibling guide only stated
-  in passing, now worked from scratch: (1) the **jerk dynamics** behind the guidance law —
-  the constant-jerk kinematic ladder (one rung up from the constant-acceleration physics-
-  class formulas), the boundary-value solve that produces `a_cmd = 6R/t² − (4v+2v_tgt)/t`,
-  and the reading of that law as a *PD controller* with derived, escalating gains and a
-  constant implied damping ratio `ζ = 2/√6 ≈ 0.82`; (2) an **alternative `t_go` closure** —
-  the Apollo-style target-acceleration form, which is a closed-form *quadratic*
-  (`a_tgt·T² − (2v+4v_tgt)T + 6R = 0`) versus the current guide's thrust-margin bisection.
-  Includes a drop-in kOS `solve_t_go_accel`, a which-closure-when comparison (thrust-margin
-  for braking, target-accel for approach — the phase split Apollo actually used), and the
-  point that the acceleration target needs **no precomputed trajectory** (synthesised live
-  from local `g`). Flagged for the chapter as the more *teachable* closure. Both notes stay
-  working material until Part IV drafting reaches them.
-
-- **Done (2026-07-12):** `notes/apollo-powered-descent.md` — implementation guide for the
-  chapters 11–12 targeted powered-descent script, modeled explicitly on the Apollo
-  sequence (DOI → coast → P63 braking → P64 approach → P66 terminal). Key design
-  decisions recorded there: aim-point guidance (Klumpp quadratic law) instead of
-  ballistic-impact prediction, which removes the terrain-height prediction problem the
-  `reference/` attempts fought; terrain height at the *target* is known exactly via
-  `geopositionlatlng`; sequential phase functions replace nested `when` triggers. The
-  guide is working material — it gets rewritten into chapter prose (and `lib/` code)
-  when Part IV drafting reaches it. New `notes/` directory holds authoring working
-  papers that are neither reader-facing (`wiki/`) nor frozen (`reference/`).
-
-- **Done (2026-07-05):** drafting conventions adapted from the theremin tutorial wiki's
-  drafting process (its `Agent_Guide` and `Tutorial/Overview` pages):
-  - New "Drafting: process and voice" section above — the answer-don't-author protocol
-    (the load-bearing piece), the five-step process, and the clunk diagnostics. The
-    template ordering follows the theremin source verbatim; a reviewer argued the pasted
-    paragraphs should precede the opening sentence — declined for fidelity, revisit if
-    chapter 2 drafting shows the ordering matters.
-  - New "Chapter stubs" convention (frontier-only); stubs created for chapters 2–3 and
-    linked from the TOC and chapter 1's footer.
-  - **Person rule decided** (litigated with Schuyler): *you* at the keyboard, *we* at the
-    whiteboard, imperatives stay imperative, promissory "you will learn/build" address
-    banned in both. The theremin we-only rule deliberately not imported; reasoning
-    recorded in the Diagnostics section.
-  - Not adapted (out of scope by decision): the theremin *(verify)*/*(judgment)* honesty
-    flags, the verify-backlog page, and the design-variable-numbers convention.
-  - `schuyler-docs` vendored at `.claude/skills/schuyler-docs/SKILL.md`, adapted for
-    discursive prose: README section patterns, length tables, and the reference-example
-    corpus dropped; voice principles kept with book-flavored examples; process and chapter
-    structure defer to this document rather than being duplicated.
-- **Pending:** restyle of `wiki/Home.md` and Chapter 1 against the vendored skill (the
-  Style-section TODO). The Home.md restyle must also add the front-matter AI disclosure
-  the vendored skill's honesty principle calls for — no home for it exists yet. Note the
-  restyle is partly *structural*, not just sentence-level:
-  Chapter 1's "Mission briefing" opener is a learning-objective list in promissory "you
-  will" address — banned twice over by the new conventions. Whether "Mission briefing"
-  survives as a chapter convention is Schuyler's call at restyle time.
-
-- **Done:** outline settled through the decisions recorded above; `wiki/Home.md` (front page +
-  full TOC); `wiki/Chapter-01-The-Flight-Computer.md` drafted (uncrewed OKTO trainer; gravity
-  experiment; `liftoff.ks`).
-- **Done (this session):** repository reorganization — legacy code frozen under `reference/`:
-  - `reference/original/` holds Schuyler's original root `*.ks` scripts (removed from root).
-  - `reference/core/`, `reference/landing_v2/`, `reference/wip/`, `reference/script/` bring
-    in main_v2's draft library. Decision: main_v2 is a draft to mine, not finished code —
-    it represents Schuyler's first pass at Keplerian mechanics and precision landing with
-    Claude. The book now blazes that trail deliberately, using main_v2 as a reference draft.
-  - `reference/wip/test_free_fall.ks` added as a tracked file (was untracked before).
-  - Source-material map updated to reflect the new paths and the additional files.
-  - This commit will land on `main` via squash merge after Schuyler's review.
-- ~~Pending review: Chapter 1 voice — awaiting `schuyler-docs` skill contents before
-  restyle.~~ *(Resolved 2026-07-05: skill vendored; restyle itself still pending, tracked
-  above.)*
-- **Next up:** Chapters 2 (telemetry library — first real `lib/` code) and 3 (rocket equation,
-  derived and measured). Create `lib/` and `missions/` alongside.
-- **Open questions:** none blocking.
+Chapters 2 (telemetry library — first real `lib/` code) and 3 (rocket equation, derived
+and measured). Create `lib/` and `missions/` alongside.
