@@ -1,4 +1,24 @@
 @lazyglobal off.
+
+// KNOWN WRONG in two places, deliberately kept. The shape here is the right
+// one and the one plan_doi.ks ended up at — place a trial node, measure what
+// the game says it does, search on that — and unlike drop_periapsis.ks this
+// does carry the body's rotation into the target longitude. The two faults are
+// marked below. Both were measured over the Mun at e = 0.012; see
+// notes/doi-planner.md.
+//
+//   1. evaluateNode reads the ground track half a period after the burn, as
+//      though that were periapsis. It is, from an apsis; off one, periapsis
+//      falls up to ~15 degrees (53 km) later, so the search minimises the
+//      distance to a point the ship does not reach at periapsis.
+//      time_of_periapsis(timestamp(nd:time), nd:orbit) is where it really is.
+//   2. makeNode sizes the burn for an ellipse whose apoapsis is the burn
+//      altitude — an apsis assumption again. The delivered periapsis comes in
+//      up to ~420 m low, and always low, which is toward the terrain.
+//
+// It also aims periapsis AT the site, where a landing wants it up-range by the
+// braking arc's reach, and timeToSetPeriapsisToGroundPoint below is dead code.
+
 parameter lat is 1.18.
 parameter lon is -6.9937.
 parameter altitudeMargin is 3000.
@@ -53,6 +73,8 @@ function buildApproachNode {
     parameter t.
     local posAtT is positionat(ship, t).
     local initialAltitude is body:altitudeof(posAtT).
+    // FAULT 2: apoapsis is passed as the burn altitude, so this is the speed
+    // on an ellipse the burn only produces from an apsis.
     local targetSpeed is orbital_speed_v1(ship:orbit, initialAltitude, targetAltitude, initialAltitude).
     local initialSpeed is orbital_speed_v1(ship:orbit, initialAltitude).
     return node(t, 0, 0, targetSpeed - initialSpeed).
@@ -62,6 +84,7 @@ function buildApproachNode {
     parameter t.
     local nd to makeNode(t).
     add nd.
+    // FAULT 1: half a period after the burn is periapsis only from an apsis.
     local dist to distanceToGroundPoint(t + orbitat(ship, t+1):period / 2).
     remove nd.
     return dist.
