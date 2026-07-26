@@ -74,7 +74,7 @@ function mean_to_true_anomaly {
 function is_ascending {
   parameter ob is ship:orbit.
   parameter t is timestamp().
-  return mean_anomaly_at_t(t) < 180. // before apoapsis
+  return mean_anomaly_at_t(ob, t) < 180. // before apoapsis
 }
 
 // Estimate the time since periapsis.
@@ -208,9 +208,10 @@ function mean_anomaly_at_r {
 }
 
 // Estimate the time to reach a given orbital height from the current orbit.
-// Returns a RELATIVE dt in seconds. (core/kepler.ks's time_to_altitude
-// returns an absolute timestamp — hence the distinct name, so both
-// libraries can be loaded together.)
+// Returns a RELATIVE dt as a TimeSpan, so `time + dt` is the arrival
+// TimeStamp and `(time + dt):seconds` the UT a warp or a node wants.
+// (core/kepler.ks's time_to_altitude returns an absolute timestamp — hence
+// the distinct name, so both libraries can be loaded together.)
 function time_until_altitude {
   parameter ob is ship:orbit.
   parameter target_alt is ob:periapsis.
