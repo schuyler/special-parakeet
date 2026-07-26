@@ -16,6 +16,12 @@ re-litigate these; if one turns out to be wrong, fix it here.*
 - Function forward references are fine.
 - `orbital_speed` is defined once, in `reference/core/kepler.ks`. Pass orbit objects, not
   scalars — it reads the sma off the orbit.
+- `r(pitch, yaw, roll)` applies its angles **roll, then pitch, then yaw**, and a
+  **positive first angle turns the nose down** — negate it to pitch up. The docs give the
+  order but not the sign; the sign is from a flight.
+- A `Direction`'s top vector is only defined for the ones you build: `prograde` and friends
+  carry an undocumented roll reference, so an `r()` about them turns about an unnamed axis.
+  `lookdirup(fore, top)` fixes both vectors and makes the pitch axis the one you meant.
 - kOS binds a script's `parameter` values *before* `run common.`, so a tunable whose
   default depends on an imported constant needs a sentinel (this repo uses -1) resolved
   after the imports.
