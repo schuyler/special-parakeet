@@ -140,7 +140,7 @@ later, better draft; the book can show the progression where instructive.
 | `set_inclination.ks` | 7 | plane-change maneuver; fits ch. 7 (orbital transfers) rather than ch. 9 (rendezvous) because inclination change is a purely Hohmann-adjacent maneuver with no phasing |
 | `kepler.ks`, `orbital.ks` (anomalies) | 8 | `kepler.ks`'s original header quip ("don't need it, see orbit.ks" — since replaced with an accurate note; see git history) is itself a good pedagogical beat: derive by hand, then learn what the API gives you |
 | `match_planes.ks`, `detune.ks`, `loiter.ks`, `transfer.ks`, `refine.ks`, `rendezvous.ks` (the closest-approach velocity match, formerly named `intercept.ks`), `meet.ks`, `next.ks`, `wait_for_launch.ks` | 9 | one script per step, each collapsible to a no-op: match planes → detune (fix the clock) → loiter (count laps; no burn) → transfer (fix the geometry) → refine node → fly → rendezvous burn. Supersedes the conflated `intercept.ks`/`phase.ks` pair (see git history) — each bundled two steps and a near-co-radial parking orbit fell between them. `meet.ks` orchestrates the whole pipeline, exiting for an alarm whenever the next wait exceeds its patience — the chapter's payoff: because every step collapses, resuming is just rerunning |
-| `dock.ks`, `dock2.ks`, `fuelxfer.ks` | 10 | |
+| `dock.ks`, `dock2.ks`, `dock3.ks`, `fuelxfer.ks` | 10 | `dock3.ks` is the propellant-budget lesson: a docking budget is single-digit m/s, cost is `2d/τ`, and time is the only lever. Pairs with the deadband — attitude is free to keep and costly to change, so stop paying for it |
 | `deorbit.ks`, `deorbit_simple.ks`, `deorbit_node.ks`, `drop_periapsis.ks`, `common.ks` (`time_to_surface`, `landing_time` Newton iteration), `reference/variants/land_at_periapsis.ks` | 11–12 | the terrain-height Newton iteration is exactly the "numerical methods where closed form runs out" lesson |
 | `reference/landing_v2/predict_datum_impact.ks`, `predict_terrain_impact.ks` | 11–12 | landing-site prediction: datum and terrain impact via Newton iteration |
 | `boostback.ks` | 12 (divert/targeting), sidebar Falcon | |
@@ -328,11 +328,13 @@ speculation, not planning.
   only state. Shared policy: `reference/core/safety.ks` (per-body safe altitudes) and
   `reference/core/planning.ks` (every threshold used by two or more pipeline scripts).
   **Unflown.**
-- **Docking** — `reference/original/dock2.ks` flies the RCS approach down a target port's
-  corridor. Sized from a delta-v budget rather than fixed gains, because a light
-  spaceplane's whole monopropellant load is worth single-digit m/s; attitude is held in a
-  deadband instead of continuously. `notes/docking-approach.md` registers the design and
-  names the three signatures `dock_log.csv` has to show. **Unflown.**
+- **Docking** — two spikes fly the RCS approach down a target port's corridor.
+  `reference/original/dock2.ks` uses fixed gains and keeps no log.
+  `reference/original/dock3.ks` sizes the whole approach from a delta-v budget instead,
+  because a light spaceplane's entire monopropellant load is worth single-digit m/s, and
+  holds attitude in a deadband rather than continuously. `notes/docking-approach.md`
+  registers the budgeted design and names the three signatures `dock_log.csv` has to
+  show. `dock.ks` is the orientation-only ancestor of both. **dock3 unflown.**
 - **Book** — `wiki/Home.md` (front page + full TOC) and
   `wiki/Chapter-01-The-Flight-Computer.md` drafted.
 

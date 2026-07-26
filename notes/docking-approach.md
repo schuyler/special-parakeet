@@ -1,8 +1,10 @@
 # The docking approach's monopropellant budget
 
-*Design register for `reference/original/dock2.ks`. Records what the approach spends,
-what sets the size of each spend, and what the flight log has to show for the design to
-be believed.*
+*Design register for `reference/original/dock3.ks`, the budgeted approach.
+`reference/original/dock2.ks` flies the same corridor on fixed gains and keeps no log;
+it is the simpler spike, still there to fly when propellant is not the binding
+constraint. This note records what the budgeted approach spends, what sets the size of
+each spend, and what the flight log has to show for the design to be believed.*
 
 ## Why the budget is tight in the first place
 
