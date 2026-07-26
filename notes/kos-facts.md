@@ -7,6 +7,13 @@ re-litigate these; if one turns out to be wrong, fix it here.*
   and `remove` works on a node fetched back out.
 - `orbit_at(t, orbit_)` (`reference/core/kepler.ks`) takes a **TimeStamp, not a scalar**.
   It works on a node's orbit, walked backward.
+- A node patch answers `ORBIT:TRUEANOMALY` out of its cached state at `ORBIT:EPOCH`, and
+  **that epoch is the node's own time**, while `ORBIT:POSITION` is the position *now*.
+  Mix the two and the prediction comes out rotated by the true anomaly the patch sweeps
+  between now and the node. Take the anomaly from `true_anomaly(time, orbit_)` instead —
+  the same number on a live orbit. Measured 2026-07-25 over the Mun: eight nodes walked
+  once around one orbit, the error tracked the sweep to 0.01 deg the whole way, 27 deg
+  at a 200 s lead and 174 deg at 1200 s.
 - `geoposition_at(t, orbit_, pos)` works for times before now; passing `pos` matches
   letting it recompute.
 - `body:angularvel` is in **radians**/sec, so `|ω|·r ≡ 2π·r/T`.

@@ -206,7 +206,14 @@ function orbit_at {
     parameter t is time.
     parameter orbit_ is ship:orbit.
 
-    local nu_0 is orbit_:trueanomaly.
+    // The anomaly and the position have to describe the same instant, and
+    // ORBIT:POSITION is the position now. A maneuver node's patch answers
+    // ORBIT:TRUEANOMALY out of its cached state at ORBIT:EPOCH, which is the
+    // node's own time, so reading that suffix rotates the whole prediction by
+    // the true anomaly the patch sweeps between now and the node. Solving the
+    // anomaly from the elements at `time` asks for the instant POSITION
+    // answered. On a live orbit the two agree.
+    local nu_0 is true_anomaly(time, orbit_).
     local pos_0 to orbit_:position - orbit_:body:position.  // Position of the ship in SOI-RAW coordinates.
 
     // True anomaly at time t.
