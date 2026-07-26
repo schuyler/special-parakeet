@@ -1,22 +1,49 @@
 # The DOI planner
 
-*The design register for `reference/original/plan_doi.ks`: one node that drops a circular
-parking orbit onto a descent ellipse whose periapsis is PDI, over the landing site.
+*The design register for `reference/original/plan_doi.ks`: one node that drops a parking
+orbit onto a descent ellipse whose periapsis is PDI, over the landing site.
 Companions: `powered-descent-invariants.md` (the flight controller this plans for),
 `powered-descent-handoff-contract.md` (the braking→terminal seam),
 `terrain-certification.md` (the terrain analysis this planner defers, and where it would
 attach).*
 
-## Why nothing here searches
+## Why the placement is a loop
 
-The parking orbit must be circular, and that assumption earns the closed form. On a
-circular orbit the DOI burn is tangential wherever it fires, so periapsis lands exactly
-180 degrees ahead and the node follows without feedback — no placement loop, no fixed
-point. Where periapsis actually lands is reported, not corrected: a drift means the
-parking orbit was not circular enough, and the pilot sees the number.
+The DOI burn is tangential, and on a *circular* parking orbit that is the whole story:
+the burn point is an apsis, periapsis lands exactly 180 degrees ahead, and vis-viva
+sized at the semimajor axis delivers the altitude asked for. A parking orbit at
+e = 0.012 is not circular enough for either claim. Measured over the Mun, with the burn
+falling at true anomaly 109 degrees:
 
-`pdi_height` is a dial. The planner marches the braking arc once, prices it, and places
-one node.
+- **Periapsis lands 195.3 degrees ahead of the burn, not 180.** Away from an apsis the
+  burn leaves radial speed in play, so the new eccentricity vector does not point back
+  along the burn radius. That is 15 degrees, about 53 km — larger than the whole
+  38.7 km braking arc, so it cannot be flown out.
+- **The altitude comes in 1064 m low**, because the radius at the burn is 822 m above
+  the semimajor axis the sizing used. Sizing at the true burn radius shrinks that to
+  ≤ 422 m, and never upward — always toward the terrain.
+
+So the planner searches. Each pass places the node, reads back what the game says that
+node does, and corrects the two numbers it asked for: the burn slides by the longitude
+miss at the ground track's synodic rate, and the radius the vis-viva sizing aims at
+absorbs the periapsis miss. Nothing models the two offsets; the loop measures them.
+
+A pass removes about nine tenths of its miss. It is not more because sliding the burn
+also slides it to a different true anomaly, changing how far past the antipode
+periapsis falls — roughly a tenth of a degree per degree, near this burn point. So the
+miss decays about a decimal digit a pass (15.7 degrees, 1.9, 0.18, 0.015) and flattens
+near a thousandth of a degree by the sixth, which is where `passes` sits.
+
+The alternative was solving the non-apsidal Δv exactly, which is available in closed
+form: for a tangential impulse, `e_new = A·e_old + (A−1)·r̂` with `A = (1 − Δv/v)²`. It
+agrees with KSP's own patch to 1 m and 0.01 degrees. It was not taken because inverting
+it for a target periapsis still needs a numerical solve, it closes only the altitude
+half of the loop, and the altitude half already converges in one pass. It is the version
+to build if the planner ever has to run without a live node — for a vessel that is not
+the active one, or with no game state to touch at all.
+
+`pdi_height` is still a dial. The planner marches the braking arc once, prices it, and
+places one node.
 
 ## The fuel lever is the PDI altitude, not the throttle
 

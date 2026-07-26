@@ -1,17 +1,17 @@
-// plan_doi.ks — the DOI planner: one node that drops a circular parking orbit
-// onto a descent ellipse whose periapsis is PDI, over the landing site.
+// plan_doi.ks — the DOI planner: one node that drops a parking orbit onto a
+// descent ellipse whose periapsis is PDI, over the landing site.
 //
 // Terrain clearance is the pilot's to certify, not this program's: check on
 // the map that the descent ellipse down to PDI and the braking arc up from it
-// both clear the ground. h_pdi is a dial rather than a search, so nothing here
-// iterates — it marches the braking arc once and places one node.
+// both clear the ground. h_pdi is a dial rather than a search, so the braking
+// arc is marched once.
 //
-// The parking orbit must be circular, and that assumption earns the closed
-// form. On a circular orbit the DOI burn is tangential wherever it fires, so
-// periapsis lands exactly 180 degrees ahead and the node follows without
-// feedback. Where periapsis actually lands is reported, not corrected: a drift
-// means the parking orbit was not circular enough, and the pilot sees the
-// number.
+// The DOI burn is tangential, so periapsis lands roughly half an orbit ahead
+// of it. Roughly, because the burn point is an apsis only on a circular
+// parking orbit; anywhere else the burn leaves radial speed in play, and
+// periapsis comes down past the antipode and lower than vis-viva sizing off an
+// apsis predicts. Neither offset is modelled here. The placement asks the game
+// where the node it just made puts periapsis, and moves the burn by the miss.
 //
 // The output is the node. Burn it, then run powered_descent.ks, which reads
 // the resulting ellipse and flies it down. f_max here must match the f_max
@@ -78,6 +78,16 @@ local a_eff is 0.8 * a_lat_max.
 // caps the fractional speed change per step.
 local pitch_tol is 1.
 local v_frac is 0.02.
+// How many times the placement below puts the node down and reads it back.
+// Every pass after the first flies the previous pass's miss into the
+// placement. A pass removes about nine tenths of its miss rather than all of
+// it, because sliding the burn also slides it to a different true anomaly on
+// the parking ellipse, which changes how far past the antipode periapsis
+// falls. So the miss decays by roughly a decimal digit a pass — measured over
+// the Mun at 15.7 degrees, 1.9, 0.18, 0.015 — and levels off near a
+// thousandth of a degree from the sixth. An accuracy bound like the two
+// above, not a craft or body number.
+local passes is 8.
 
 // Mass leaves through the engine at thrust / (Isp * g0) at full throttle; the
 // stepper scales it by the throttle.
@@ -145,39 +155,53 @@ function brake_reach {
 }
 
 // === THE NODE ===
-// One retrograde node that drops periapsis to h_pdi, placed so periapsis falls
-// lead_deg up-range (west) of the site. On a circular orbit the burn point is
-// the descent ellipse's apoapsis, exactly 180 degrees inertial before
-// periapsis, and the burn is purely tangential, so this needs no feedback
-// correction: plan_doi's place_node loop was that correction, and a circular
-// orbit does not book the error it corrected.
+// One retrograde node that drops periapsis to h_pdi over desired_lng. Each
+// pass places the node, asks the game what that node actually does, and
+// corrects the two numbers it was asked for: the burn slides west or east by
+// the longitude miss, and the radius the sizing formula aims at absorbs the
+// periapsis miss. Both corrections are applied at the top of a pass, so the
+// last one computed is also flown into a placement.
 function plan_node {
-  parameter lead_deg.
+  parameter desired_lng.   // body-fixed longitude periapsis is wanted at
+  parameter t_burn.        // seed burn time, roughly half an orbit before it
 
-  // The site moves east while the ship coasts the half-ellipse from the burn
-  // (apoapsis) down to periapsis, so aim at where it will be.
-  local sma_desc is (ship:orbit:semimajoraxis + body:radius + h_pdi) / 2.
-  local t_coast is constant:pi * sqrt(sma_desc ^ 3 / body:mu).
-  local site_advance is t_coast * 360 / body:rotationperiod.
-  local aim_lng is tgt:lng + site_advance.
+  // Degrees of longitude the ground track covers per second: 360 over the
+  // synodic period, the body's own rotation already netted out. It turns a
+  // longitude miss into the burn-time change that removes it.
+  local lng_rate is 360 / synodic_period(ship:orbit).
+  // The periapsis radius the vis-viva sizing aims at. It starts at the one
+  // wanted and absorbs the difference between what a tangential burn off an
+  // apsis delivers and what one here does.
+  local r_aim is body:radius + h_pdi.
+  // The previous pass's misses: metres of periapsis below h_pdi, and degrees
+  // of longitude east of where periapsis was wanted. Zero on the first pass,
+  // which places the node from the seed alone.
+  local pe_miss is 0.
+  local lng_miss is 0.
 
-  // The burn point sits half an orbit (180 degrees inertial) before periapsis,
-  // and lead_deg before the site.
-  local burn_lng is wrap_longitude(aim_lng - lead_deg - 180).
-  local t_burn is time_to_longitude(burn_lng).
+  local nd is node(t_burn:seconds, 0, 0, 0).
+  add nd.
+  from { local pass is 0. } until pass >= passes step { set pass to pass + 1. } do {
+    set r_aim to r_aim + pe_miss.
+    set t_burn to t_burn - lng_miss / lng_rate.
 
-  // Circular: the radius at the burn point is the parking semimajor axis, the
-  // speed there is circular, and the new speed is vis-viva at that radius on
-  // the descent ellipse. The burn is the difference, retrograde. plan_doi's
-  // velocityat/positionat forms would read the true radius and speed at t_burn,
-  // so a slightly eccentric orbit's Δv would come out right — but the 180°
-  // placement below assumes circular regardless, so the closed form states the
-  // one assumption rather than half-honoring it. Swap in the predictor here if
-  // the parking orbit's eccentricity ever earns the correction.
-  local r_burn is ship:orbit:semimajoraxis.
-  local v_old is sqrt(body:mu / r_burn).
-  local v_new is sqrt(body:mu * (2 / r_burn - 1 / sma_desc)).
-  return node(t_burn:seconds, 0, 0, v_new - v_old).
+    // The ship's own radius and speed at the burn, read off the parking orbit.
+    // positionat and velocityat follow the predicted trajectory through a
+    // pending node, and at t_burn that is this node's own discontinuity.
+    local st is orbit_at(t_burn, ship:orbit).
+    local r_burn is st["position"]:mag.
+    set nd:time to t_burn:seconds.
+    // Vis-viva for the ellipse with apoapsis at the burn and periapsis at
+    // r_aim, less the speed the ship already has there.
+    set nd:prograde to sqrt(body:mu * (2 / r_burn - 2 / (r_burn + r_aim)))
+                     - st["velocity"]:mag.
+
+    local t_pe is time_of_periapsis(timestamp(nd:time), nd:orbit).
+    set pe_miss to h_pdi - nd:orbit:periapsis.
+    set lng_miss to wrap_longitude(
+        geoposition_at(t_pe, nd:orbit):lng - desired_lng).
+  }
+  return nd.
 }
 
 // === THE PLAN ===
@@ -201,10 +225,27 @@ if arc["pitch"] > tilt_max - 90 {
 local braking is arc["x"] + arc["vh"] ^ 2 / (2 * a_eff).
 local lead_deg is braking / body:radius * constant:radtodeg.
 
-local nd is plan_node(lead_deg).
-add nd.
-// A non-positive ETA is time_to_longitude's past-time sentinel arriving as a
-// node in the past.
+// Where periapsis is wanted, and the burn that seeds the search for it: half
+// an orbit before that longitude, and further west by the rotation the body
+// turns through while the ship coasts down.
+local desired_lng is wrap_longitude(tgt:lng - lead_deg).
+local sma_seed is (ship:orbit:semimajoraxis + body:radius + h_pdi) / 2.
+local t_coast is constant:pi * sqrt(sma_seed ^ 3 / body:mu).
+local burn_lng is wrap_longitude(desired_lng
+    + t_coast * 360 / body:rotationperiod - 180).
+local t_seed is time_to_longitude(burn_lng).
+// A time in the past is time_to_longitude's sentinel for a root it could not
+// bracket.
+if (t_seed - time):seconds <= 0 {
+  set config:ipu to ipu_prior.
+  print "ABORT: found no crossing of the burn longitude "
+      + round(burn_lng, 2) + " deg ahead.".
+  wait until false.
+}
+
+local nd is plan_node(desired_lng, t_seed).
+// The corrections move the burn by as much as tens of seconds, which from a
+// seed already close to now can walk it into the past.
 if nd:eta <= 0 {
   remove nd.
   set config:ipu to ipu_prior.
@@ -224,13 +265,14 @@ if nd:eta < burn_duration(nd:deltav:mag) / 2 + 60 {
 }
 
 // === THE VERDICT ===
-// Where periapsis actually lands, against where it was aimed. On a circular
-// orbit the two agree; a drift is the parking orbit's eccentricity speaking,
-// and it is reported for the pilot's eye rather than corrected.
-local desired_lng is wrap_longitude(tgt:lng - lead_deg).
+// Where periapsis lands and how high, against what was asked of it. These are
+// the placement's residuals, not a drift it declined to correct: the loop
+// aimed at both, so a search that did not converge shows up here rather than
+// going unsaid.
 local t_pdi is time_of_periapsis(timestamp(nd:time), nd:orbit).
 local pe_lng is geoposition_at(t_pdi, nd:orbit):lng.
 local pe_err is wrap_longitude(pe_lng - desired_lng).
+local pe_miss is nd:orbit:periapsis - h_pdi.
 
 // The chord's slope, degrees below horizontal: how steep the approach is, from
 // the PDI altitude down to where the arc reached the seam, over the ground it
@@ -253,13 +295,14 @@ report("# parking " + round(ship:orbit:periapsis) + " x "
     + round(ship:orbit:apoapsis) + " m  ecc "
     + round(ship:orbit:eccentricity, 4)).
 report("# h_pdi " + round(h_pdi) + " m (node delivers "
-    + round(nd:orbit:periapsis) + ")  gamma " + round(gamma, 2) + " deg").
+    + round(nd:orbit:periapsis) + ", miss " + round(pe_miss, 1)
+    + " m)  gamma " + round(gamma, 2) + " deg").
 report("# arc  reach " + round(arc["x"]) + " m  vh " + round(arc["vh"], 1)
     + " m/s  stop " + round(arc["vh"] ^ 2 / (2 * a_eff)) + " m  lead "
     + round(lead_deg, 2) + " deg at f_cap " + round(f_cap, 3)).
 report("# node  dv " + round(dv_doi, 1) + " m/s  eta " + round(nd:eta)
     + " s  pe_lng " + round(pe_lng, 2) + " want " + round(desired_lng, 2)
-    + " (err " + round(pe_err, 2) + " deg)").
+    + " (err " + round(pe_err, 3) + " deg)").
 
 set config:ipu to ipu_prior.
 print "Node placed. Eyeball the ellipse for terrain clearance, then burn and"
