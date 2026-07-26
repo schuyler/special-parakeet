@@ -306,7 +306,7 @@ speculation, not planning.
 
 ## Status
 
-*Last updated: 2026-07-24*
+*Last updated: 2026-07-26*
 
 ### Where the code stands
 
@@ -328,6 +328,11 @@ speculation, not planning.
   only state. Shared policy: `reference/core/safety.ks` (per-body safe altitudes) and
   `reference/core/planning.ks` (every threshold used by two or more pipeline scripts).
   **Unflown.**
+- **Docking** — `reference/original/dock2.ks` flies the RCS approach down a target port's
+  corridor. Sized from a delta-v budget rather than fixed gains, because a light
+  spaceplane's whole monopropellant load is worth single-digit m/s; attitude is held in a
+  deadband instead of continuously. `notes/docking-approach.md` registers the design and
+  names the three signatures `dock_log.csv` has to show. **Unflown.**
 - **Book** — `wiki/Home.md` (front page + full TOC) and
   `wiki/Chapter-01-The-Flight-Computer.md` drafted.
 
