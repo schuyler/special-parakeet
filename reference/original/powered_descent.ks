@@ -25,9 +25,9 @@
 //   4. High gate opens the vertical corridor: total speed small enough
 //      that an f_max burn can rest the craft above the pad. Inside it at
 //      the gate, the arrest schedule always fires above the pad.
-//   5. Terminal is the flown chain kept whole: FALL — engine off,
-//      retrograde hold, drift already nulled — then the arrest burn from
-//      the schedule, plumb below walking speed, settle.
+//   5. Terminal: FALL — engine off, retrograde hold, drift already nulled
+//      at the gate — then the arrest burn from the schedule, plumb below
+//      walking speed, settle.
 
 @lazyglobal off.
 
@@ -39,6 +39,15 @@ run "../core/kepler".      // geoposition_at, wrap_longitude; bisect rides along
 
 parameter target_lat is 0.
 parameter target_lng is 0.
+// h_gate: high gate's height above the site's terrain — the design's one
+// terrain-clearance input. Must equal the h_gate plan_doi placed the node
+// with, or the corridor flown is not the one planned. Sized to contain the
+// arrest with a factor k_gate ~ 2 in hand: low gate falls near h_gate/2
+// (the corridor's mid-target entered at v_gate makes h_lg = h_pad +
+// (v_gate^2 + 2*g0*(h_gate - h_pad)) / (2*(a_dec + g0)) ~ h_gate/2), so
+// the schedule fires with as much altitude below it as the burn needs.
+// Craft- and body-free as a ratio.
+parameter h_gate is 300.
 parameter f_max is 0.85.
 parameter plan_pe_lng is 999.  // planner's wanted periapsis longitude, deg;
                                // 999 = not supplied, witness logs delivered only
@@ -59,16 +68,6 @@ local g0 is body:mu / body:radius ^ 2.
 local h_pad is 5.
 local v_floor is 2.
 local v_switch is 5.
-
-// h_gate: high gate's height above the site's terrain — the design's one
-// terrain-clearance input. Sized to contain the arrest with a factor
-// k_gate ~ 2 in hand: low gate falls near h_gate/2 (the corridor's
-// mid-target entered at v_gate makes h_lg = h_pad +
-// (v_gate^2 + 2*g0*(h_gate - h_pad)) / (2*(a_dec + g0)) ~ h_gate/2), so
-// the schedule fires with as much altitude below it as the burn needs.
-// Craft- and body-free as a ratio; the flown anchor is the fixbatch
-// flight's 283 m gate arresting at radar 127.
-local h_gate is 300.
 
 // tau_f: the t_go floor and the virtual gate's propagation time, seconds.
 // Family of a settle time — what a command reversal takes at steering
@@ -383,7 +382,7 @@ log "# high gate  radar " + round(alt:radar)
     + "  lng " + round(ship:geoposition:lng, 4) to flightlog.
 
 // === TERMINAL DESCENT ===
-// The flown chain, kept whole. FALL: engine off, holding surface
+// FALL: engine off, holding surface
 // retrograde — with drift nulled at the gate, retrograde and plumb
 // coincide to within the residual, so the nose is already on the thrust
 // direction when the arrest ignites and there is no slew to pay. The
@@ -400,15 +399,14 @@ lock throttle to 0.
 // above the ground. alt:radar measures from the core, which sits metres
 // above the legs' contact point, so heights against it plan the flare
 // into the ground by the craft's own core height. ship:bounds is
-// obtained once — the docs price obtaining it as expensive, and the box
+// obtained once — the docs describe obtaining it as expensive, and the box
 // only goes stale if the ship changes shape, which it finished doing
 // when the gear deployed at ignition; the bottomaltradar suffix off the
 // stored box is the cheap per-tick read, and it tracks attitude, so
 // while the craft still leans it reads the corner that would touch
-// first. The one-time check guards an API this program has not flown
-// through a flare: a box reading above the core, or a core height beyond
-// any lander's geometry, falls back to the core radar — the flown,
-// six-metres-wrong behavior — rather than flying a nonsense number.
+// first. The one-time check: a box reading above the core, or a core
+// height beyond any lander's geometry, falls back to the core radar
+// rather than flying a nonsense number.
 local box is ship:bounds.
 local dh_core is alt:radar - box:bottomaltradar.
 local use_box is dh_core >= 0 and dh_core <= 20.

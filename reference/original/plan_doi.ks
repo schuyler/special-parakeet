@@ -23,8 +23,7 @@
 // ground under the braking arc is uncertified (terrain-certification.md);
 // the modelled E-guidance path clears the straight PDI-to-gate chord over
 // its whole length, so a single offline march per placement could certify
-// braking-arc clearance the way the retired chord certificate did — noted,
-// deliberately not built.
+// braking-arc clearance — noted, deliberately not built.
 
 @lazyglobal off.
 
@@ -72,16 +71,14 @@ local f_cap is (1 - f_headroom) * f_max.
 local h_pad is 5.
 local g_surf is body:mu / body:radius ^ 2.
 
-// The march's accuracy bounds — twins of the flight recorder era's, and
-// locals for the same reason: accuracy bounds, not craft or body numbers.
-// pitch_tol caps the flight-path rotation per Euler step (degrees); v_frac
-// caps the fractional speed change per step.
+// The march's accuracy bounds — locals because they are accuracy bounds,
+// not craft or body numbers. pitch_tol caps the flight-path rotation per
+// Euler step (degrees); v_frac caps the fractional speed change per step.
 local pitch_tol is 1.
 local v_frac is 0.02.
 // How many times the placement below puts the node down and reads it back.
-// The miss decays by roughly a decimal digit a pass — measured over the Mun
-// at 15.7 degrees, 1.9, 0.18, 0.015 — and levels off near a thousandth of a
-// degree from the sixth.
+// The miss decays by roughly a decimal digit a pass and levels off near a
+// thousandth of a degree from the sixth (measured; doi-planner.md).
 local passes is 8.
 
 // Mass leaves through the engine at thrust / (Isp * g0) at full throttle;
@@ -97,9 +94,8 @@ print "target " + round(target_lat, 4) + " " + round(target_lng, 4)
 
 // Ground-relative periapsis speed of the descent ellipse with periapsis at
 // datum altitude h: vis-viva with apoapsis at the parking orbit's
-// semi-major-axis radius (the source that reproduces the flown 563.7 m/s),
-// less the ground's eastward motion, because the arc is flown against the
-// ground.
+// semi-major-axis radius, less the ground's eastward motion, because the
+// arc is flown against the ground.
 function v_pe_at {
   parameter h.
   local r_pe is body:radius + h.
@@ -166,22 +162,32 @@ local h_pdi is 0.
 local arc is 0.
 local v_gate_prior is 0.
 from { local pass_ is 0. } until pass_ >= 2 step { set pass_ to pass_ + 1. } do {
-  // The bracket: from just above the gate (an arc into the gate still fast)
-  // to 12 km over it (an arc that stalls high). Signs checked before
-  // bisecting so a bracket failure aborts in this program's own words.
-  local lo is alt_gate + 1500.
-  local hi is alt_gate + 12000.
+  // The bracket: from just above the gate (an arc from there falls into the
+  // gate still fast) to the parking orbit's own periapsis (the ellipse
+  // family's ceiling — above it there is no descent ellipse to place).
+  // Signs checked before bisecting so a bracket failure aborts in this
+  // program's own words.
+  local lo is alt_gate + 1.
+  local hi is ship:orbit:periapsis.
   local stall_alt is {
     parameter h_. return ref_arc(h_, v_gate, f_cap)["h"] - alt_gate. }.
   if stall_alt(lo) > 0 or stall_alt(hi) < 0 {
     set config:ipu to ipu_prior.
     print "ABORT: no periapsis in " + round(lo) + ".." + round(hi)
-        + " m puts the f_cap arc's stall at the gate. The ellipse family is"
-        + " exhausted for this craft and gate; raise h_gate, add thrust, or"
-        + " lower f_headroom.".
+        + " m (gate to parking periapsis) puts the f_cap arc's stall at the"
+        + " gate; raise h_gate, add thrust, or lower f_headroom.".
     wait until false.
   }
-  set h_pdi to bisect(stall_alt, lo, hi, 1).
+  // The solve stops when the bracket is narrower than v_frac times the
+  // midpoint's height above the gate: the march carries roughly v_frac of
+  // relative error, so a tighter root would be precision the function
+  // does not have. The tolerance scales itself — metres when the root
+  // sits close over the gate, hundreds of metres when it sits high.
+  until hi - lo < v_frac * ((lo + hi) / 2 - alt_gate) {
+    local mid is (lo + hi) / 2.
+    if stall_alt(mid) > 0 { set hi to mid. } else { set lo to mid. }
+  }
+  set h_pdi to (lo + hi) / 2.
   set arc to ref_arc(h_pdi, v_gate, f_cap).
   if arc["steps"] >= 6000 {
     set config:ipu to ipu_prior.
@@ -211,8 +217,8 @@ local v0 is v_pe_at(h_pdi).
 // least peak demand any t_go buys at this lead. Each endpoint is priced at
 // its own mass and local gravity. Closed form, exact under constant gravity,
 // approximate here only through the ~11 degrees the arc subtends — the
-// closed form under-reads the flown peak by ~0.015 of throttle, inside the
-// f_cap..f_max reserve.
+// closed form under-reads the closed-loop peak by ~0.015 of throttle
+// (modelled), inside the f_cap..f_max reserve.
 function endpoint_demand {
   parameter tau.
   parameter x_lead.
@@ -252,21 +258,30 @@ function dip_at {
 
 // The lead X: where the dip demand equals f_cap. Demand falls as lead grows
 // — more ground, gentler profile — so the root is bisected between the
-// reference arc's own reach (dip above f_cap there) and 8 km further out. A
-// dip already at or under f_cap at the arc's reach adopts the reach: extra
-// lead would spend margin the plan already has.
+// reference arc's own reach (dip above f_cap there) and a far end found by
+// doubling the reach until the demand drops under it; the reach is the
+// craft's own length scale, so the search grows in its units. The ceiling
+// is geometric: a lead past a quarter of the body's circumference is no
+// longer an approach. A dip already at or under f_cap at the arc's reach
+// adopts the reach: extra lead would spend margin the plan already has.
 local x_lead is arc["x"].
 local dip is dip_at(x_lead).
 if dip["demand"] > f_cap {
   local over is { parameter x_. return dip_at(x_)["demand"] - f_cap. }.
-  if over(arc["x"] + 8000) > 0 {
+  local x_far is 2 * arc["x"].
+  local x_ceil is constant:pi * body:radius / 2.
+  until over(x_far) <= 0 or x_far > x_ceil {
+    set x_far to 2 * x_far.
+  }
+  if x_far > x_ceil {
     set config:ipu to ipu_prior.
     print "ABORT: guidance demand stays above f_cap " + round(f_cap, 3)
-        + " even 8 km past the reference reach — no lead fits this craft"
-        + " under its reserve. Add thrust or lower f_headroom.".
+        + " for every lead out to a quarter of the body's circumference —"
+        + " no lead fits this craft under its reserve. Add thrust or lower"
+        + " f_headroom.".
     wait until false.
   }
-  set x_lead to bisect(over, arc["x"], arc["x"] + 8000, 10).
+  set x_lead to bisect(over, arc["x"], x_far, 10).
   set dip to dip_at(x_lead).
 }
 local lead_deg is x_lead / body:radius * constant:radtodeg.
