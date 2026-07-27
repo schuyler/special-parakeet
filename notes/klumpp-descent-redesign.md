@@ -105,6 +105,9 @@ FALL holds surface retrograde above `v_switch`. With drift nulled at the gate, r
 and plumb coincide to within the drift residual, so — per the thrust-waits-for-attitude
 lesson (`powered-descent-invariants.md`, Standing lessons) — there is no slew to pay at
 arrest ignition: the nose is already on the thrust direction when low gate fires. The
+alignment is bought at FALL entry, not free: braking's arrival attitude is the profile's,
+near the horizon when the arrival acceleration is mostly braking, and the swing from it
+to plumb spends the front of the FALL window (High gate placement, third bullet). The
 terminal chain below the gate — FALL, the low-gate schedule on `h_bot`, the arrest burn
 with its lean-cosine factor, the witness lines — carries over from the earlier build
 intact, and it has flown 33 m and 34 m misses under the retrograde braking phase and 15 m
@@ -335,7 +338,16 @@ free of both as a rule). The altitude's own argument:
   falsifies `h_lg` is a flight whose arrest peaks at the throttle ceiling — 1.0, the
   engine's own limit — or reaches the pad still above `v_floor`; the band above `f_max` is
   the arrest's reserve, and flights are expected to enter it under planning slop.
-- **Bound what drift costs.** "No horizontal channel below the gate" would be false:
+- **Contain the plumb slew.** Braking exits at the profile's arrival attitude — pitch
+  −15.8° flown, near the horizon, because the arrival acceleration is mostly braking —
+  while FALL commands plumb, so FALL opens with a slew: 106° flown, closing
+  105.8 → 99.6 → 77.2 → 46.8 → 17.4 → 0.4 of facing_err across five 1 s rows, peak
+  ~30°/s, settled ~6 s before low gate fired. The budget is the `h_gate → h_lg` fall
+  time: ~11 s at the flown 1500 m gate, ~4.5 s at the example craft's 300 m gate — the
+  margin shrinks with the gate, and a slow-rotating craft at a low gate meets its arrest
+  mid-slew, paying thrust-waits-for-attitude at the most expensive moment. No rule
+  computes the slew or checks the window (Open); the FALL rows' facing_err and pitch
+  columns witness it per flight.
   the retained arrest thrusts anti-velocity, and the fixbatch flights *measured* it
   closing 128 m of offset to 33 and 9.9 m/s of drift to 0.2. So gate drift is not a
   sentence, it is a cost: ~3–4 m of residual miss per m/s of gate drift as flown
@@ -450,7 +462,21 @@ reading):
   geometry, not analytically; the `t_go` bracket `[1.6, 2.6]·X/v₀` is load-bearing.
   A derivation of the dip and its bounds would retire the bracket.
 - `t_go_floor`, the exit floor and virtual-gate offset, is family-of-`t_settle` and
-  underived.
+  underived. What it buys is the airframe tracking the law's final commanded rotation —
+  the gains rise toward exit — so its per-flight witness is the facing_err trend across
+  the last braking rows: 0.7 → 3.7° over the final five seconds flown, the command
+  outrunning the nose. Growth there is the floor-too-small signature.
+- The FALL-entry slew is unbudgeted: the plumb-slew window (High gate placement, third
+  bullet) is checked by no rule. The pieces of a guard exist without new physics: the
+  swing angle is the angle between the profile's gate-end thrust direction — `a₁ − g`,
+  already computed at the solve — and plumb; the window is the `h_gate → h_lg` fall
+  time; the slew law is the steering manager's, `ω_max = MAXSTOPPINGTIME · torque/MOI`
+  with `MAXSTOPPINGTIME` readable (default 2 s) — so the one craft number missing is
+  the angular acceleration `torque/MOI`, which kOS exposes no suffix for and a step
+  response measures (`steeringmanager:writecsvfiles` logs the six loops; a bridge
+  attitude-step on orbit is the clean instrument). The flown swing is consistent with
+  that model at 1 Hz resolution: ramp to a ~30°/s peak ≈ `2 s · torque/MOI`, then
+  106° in 5–6 s. Registered, deliberately unbuilt.
 - Saturation response in braking — ride it or abort to orbit — is policy, Schuyler's
   call, and a named departure from the source's abort prescription.
 - `v_switch` (5 m/s, the plumb-below speed in the arrest) is chosen, not derived.

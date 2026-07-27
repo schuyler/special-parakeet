@@ -86,8 +86,11 @@ The flight is these five statements and nothing more.
 
 5. **Terminal is a chain of three states, not a controller.** FALL: engine off, holding
    surface retrograde. With drift nulled at the gate, retrograde and plumb coincide to
-   within the residual, so the nose is already on the thrust direction when the arrest
-   ignites — thrust waits for attitude, and this is how it is paid for. Low gate: the
+   within the residual, so the nose is on the thrust direction when the arrest ignites —
+   thrust waits for attitude, and this is how it is paid for. The payment happens at
+   FALL entry: braking exits at the profile's arrival attitude, near the horizon, and
+   the swing to plumb spends the front of the FALL window (106° in 5–6 s flown, against
+   ~11 s of window; `klumpp-descent-redesign.md`, High gate placement). Low gate: the
    arrest schedule fires when `f_max` could just bring the total speed to rest `h_pad`
    above the ground. Arrest burn: hold the vertical deceleration that carries the descent
    rate to `v_floor` at the pad, restoring the vertical share the retrograde lean sends
@@ -202,7 +205,15 @@ Carried forward; each was earned by a flight.
 ## Open
 
 - `t_go_floor` (3 s) is family-of-settle-time and underived; the virtual gate's construction
-  bounds its consequence, not its value.
+  bounds its consequence, not its value. What it buys is the airframe tracking the law's
+  final commanded rotation, so its witness is the facing_err trend across the last
+  braking rows (0.7 → 3.7° over the final five seconds flown); growth there is the
+  floor-too-small signature.
+- The FALL-entry slew to plumb is unbudgeted: it must finish inside the `h_gate → h_lg`
+  fall window (106° in 5–6 s flown against ~11 s), and no rule computes or checks it.
+  The guard's pieces and the steering-manager slew model are registered in
+  `klumpp-descent-redesign.md` (Open); the FALL rows' facing_err and pitch columns
+  witness it per flight.
 - `v_switch` (5 m/s) is a chosen tolerance, carried from the earlier build.
 - The `[1.6, 2.6]·X/v₀` bracket is load-bearing: the demand curve's dip structure is
   established numerically for this geometry, not proved. A derivation retires it.
