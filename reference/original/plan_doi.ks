@@ -249,19 +249,19 @@ local v0 is v_pe_at(h_pdi).
 // closed form under-reads the closed-loop peak by ~0.015 of throttle
 // (modelled), inside the f_cap..f_max reserve.
 function endpoint_demand {
-  parameter tau.
+  parameter t_go.
   parameter x_lead.
   // The 2-D frame: x toward the site along the ground, y up. Boundary
   // conditions: from (0, h_pdi) at (v0, 0) to (x_lead, alt_gate) at
   // (0, -v_gate).
-  local drx is x_lead - v0 * tau.
+  local drx is x_lead - v0 * t_go.
   local dry is alt_gate - h_pdi.
   local dvx is -v0.
   local dvy is -v_gate.
-  local a0x is 6 * drx / tau ^ 2 - 2 * dvx / tau.
-  local a0y is 6 * dry / tau ^ 2 - 2 * dvy / tau.
-  local a1x is 4 * dvx / tau - 6 * drx / tau ^ 2.
-  local a1y is 4 * dvy / tau - 6 * dry / tau ^ 2.
+  local a0x is 6 * drx / t_go ^ 2 - 2 * dvx / t_go.
+  local a0y is 6 * dry / t_go ^ 2 - 2 * dvy / t_go.
+  local a1x is 4 * dvx / t_go - 6 * drx / t_go ^ 2.
+  local a1y is 4 * dvy / t_go - 6 * dry / t_go ^ 2.
   local g0_ is body:mu / (body:radius + h_pdi) ^ 2.
   local g1_ is body:mu / (body:radius + alt_gate) ^ 2.
   return lexicon(
@@ -278,8 +278,8 @@ function endpoint_demand {
 // non-monotonicity is why no simpler rule serves.
 function dip_at {
   parameter x_lead.
-  local cross is { parameter tau.
-    local pair is endpoint_demand(tau, x_lead).
+  local cross is { parameter t_go.
+    local pair is endpoint_demand(t_go, x_lead).
     return pair["ign"] - pair["gate"]. }.
   local t_lo is 1.6 * x_lead / v0.
   local t_hi is 2.6 * x_lead / v0.
@@ -294,9 +294,9 @@ function dip_at {
   // bracket spans 1.6 to 2.6 of it). The flight re-solves t_go from the
   // delivered state at ignition, so this dip's t_go is a cross-check
   // against that solve, not the number flown.
-  local tau is bisect(cross, t_lo, t_hi, v_frac * x_lead / v0).
-  return lexicon("ok", true, "t_go", tau,
-                 "demand", endpoint_demand(tau, x_lead)["ign"]).
+  local t_go is bisect(cross, t_lo, t_hi, v_frac * x_lead / v0).
+  return lexicon("ok", true, "t_go", t_go,
+                 "demand", endpoint_demand(t_go, x_lead)["ign"]).
 }
 
 // The lead X: where the dip demand equals f_cap. Demand falls as lead grows

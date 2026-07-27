@@ -50,17 +50,17 @@ The flight is these five statements and nothing more.
 
 3. **The law aims at a virtual gate.** E-guidance does not taper — at any positive `t_go`
    it still commands its arrival acceleration — so a law aimed at the real gate and cut
-   at a floor `τ_f` hands FALL a velocity error of about `|a_end|·τ_f`. The aim point is
-   therefore the real gate state propagated `τ_f` forward along the profile's own linear
-   acceleration, position and velocity both, with `k = (a₁ − a₀)/τ` the planned profile's
+   at a floor `t_go_floor` hands FALL a velocity error of about `|a_end|·t_go_floor`. The aim point is
+   therefore the real gate state propagated `t_go_floor` forward along the profile's own linear
+   acceleration, position and velocity both, with `k = (a₁ − a₀)/t_go_ign` the planned profile's
    jerk:
 
    ```
-   v_virt = v_gate + a₁·τ_f + ½·k·τ_f²
-   p_virt = p_gate + v_gate·τ_f + ½·a₁·τ_f² + (1/6)·k·τ_f³
+   v_virt = v_gate + a₁·t_go_floor + ½·k·t_go_floor²
+   p_virt = p_gate + v_gate·t_go_floor + ½·a₁·t_go_floor² + (1/6)·k·t_go_floor³
    ```
 
-   Braking exits at `t_go = τ_f`, at which instant the ship occupies the *real* gate
+   Braking exits at `t_go = t_go_floor`, at which instant the ship occupies the *real* gate
    state to the law's tracking accuracy, and the `1/t_go²` divergence never enters. Only
    the offsets are frozen at the solve; the gate's position and its vertical are rebuilt
    from the live target each tick, so the aim point rides the rotating ground.
@@ -111,7 +111,7 @@ above weight, and a gate above the flare height. Two checks run at PDI, where de
 to ignite *is* the abort — the ship sits at the periapsis of a stable, quicksave-able
 ellipse.
 
-1. **The demand crossing left the bracket.** The gate-end demand dominates at short `τ`
+1. **The demand crossing left the bracket.** The gate-end demand dominates at short `t_go`
    and the ignition end at long, so a same-signed pair at the bracket ends means the
    crossing, and the dip with it, sits outside the interval this design certifies. Logged
    with both gaps and the distance flown to.
@@ -129,7 +129,7 @@ decrementing clock accumulates.
 `flight_log.csv`, one row a second through braking, four a second through the arrest burn,
 with planning numbers as `#` lines. The columns that carry the invariants:
 
-- **`t_go`** — the guidance clock. It runs down to `τ_f` and nowhere else; a `t_go` that
+- **`t_go`** — the guidance clock. It runs down to `t_go_floor` and nowhere else; a `t_go` that
   disagrees with the planner's reference by more than ~10 s at ignition is the placement
   cross-check failing.
 - **`dem`** — commanded demand as a fraction of available thrust. Above `f_max` is
@@ -201,7 +201,7 @@ Carried forward; each was earned by a flight.
 
 ## Open
 
-- `τ_f` (3 s) is family-of-settle-time and underived; the virtual gate's construction
+- `t_go_floor` (3 s) is family-of-settle-time and underived; the virtual gate's construction
   bounds its consequence, not its value.
 - `v_switch` (5 m/s) is a chosen tolerance, carried from the earlier build.
 - The `[1.6, 2.6]·X/v₀` bracket is load-bearing: the demand curve's dip structure is

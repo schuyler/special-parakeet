@@ -83,7 +83,7 @@ speed to rest `h_pad` above the pad.
 | DOI, descent coast | node from `plan_doi`, on-rails ellipse to periapsis | — |
 | PDI | ignition at periapsis; `t_go` chosen, feasibility checked | — |
 | braking (Klumpp) | one vector law flies position, velocity, and throttle toward the gate state | `a_cmd = 6·(r_tgt − r)/t_go² − (4·v + 2·v_tgt)/t_go` |
-| high gate | event: braking exits over the site at `h_gate`, mid-corridor descent, drift nulled | `t_go` reaches the floor `τ_f` |
+| high gate | event: braking exits over the site at `h_gate`, mid-corridor descent, drift nulled | `t_go` reaches the floor `t_go_floor` |
 | FALL | engine off, retrograde attitude hold (≈ plumb at zero drift), vertical fall | — |
 | low gate | event: the arrest schedule fires on `h_bot` | existing |
 | arrest burn | throttle carries descent rate to `v_floor`; plumb below `v_switch` | existing |
@@ -169,8 +169,8 @@ same state to the gate altitude). Modelled, not flown:
 - **Peak thrust demand over the burn is not monotone in `t_go`.** It falls steeply from
   short burns to a **dip at `t_go` ≈ 2.0·X/v₀ (141.1 s here): Δv 591.0 m/s, peak
   demand 0.803**, rises to a local maximum (1.065 near 3·X/v₀ ≈ 209 s, where the
-  along-track term `4v/τ − 6X/τ²` peaks), then falls again onto a hover branch — the
-  far-side root of "demand = f_cap" is a *lofted* profile (τ ≈ 492 s) that climbs
+  along-track term `4v/t_go − 6X/t_go²` peaks), then falls again onto a hover branch — the
+  far-side root of "demand = f_cap" is a *lofted* profile (t_go ≈ 492 s) that climbs
   5.4 km before descending and spends **1,032 m/s**. Any `t_go` selection rule that
   assumes monotonicity and takes the first root from above lands on the hover branch
   and wastes ~440 m/s.
@@ -266,23 +266,23 @@ The five pieces:
   bullet); `v_tgt` its matching velocity.
 - **The virtual gate.** E-guidance does not taper: at any positive `t_go` it still
   commands its arrival acceleration — thrust demand 4.90 m/s², commanded `|a_end|`
-  4.34 m/s² here — so exiting at a floor `τ_f` aimed at the real gate hands FALL a
-  velocity error of roughly `|a_end|·τ_f`: **13.0 m/s at a 3 s floor** (8.74 at 2 s),
+  4.34 m/s² here — so exiting at a floor `t_go_floor` aimed at the real gate hands FALL a
+  velocity error of roughly `|a_end|·t_go_floor`: **13.0 m/s at a 3 s floor** (8.74 at 2 s),
   against a 1–2 m/s drift bound — structurally the old design's 16 m/s
   touchdown-drift failure reborn one phase earlier. The law therefore aims at a
-  virtual gate: the real gate state propagated `τ_f` forward along the profile's own
+  virtual gate: the real gate state propagated `t_go_floor` forward along the profile's own
   linear acceleration, offsetting velocity as well as position. With
-  `k = (a₁ − a₀)/τ` the planned profile's jerk,
+  `k = (a₁ − a₀)/t_go_ign` the planned profile's jerk,
 
   ```
-  v_virt = v_gate + a₁·τ_f + ½·k·τ_f²
-  p_virt = p_gate + v_gate·τ_f + ½·a₁·τ_f² + (1/6)·k·τ_f³
+  v_virt = v_gate + a₁·t_go_floor + ½·k·t_go_floor²
+  p_virt = p_gate + v_gate·t_go_floor + ½·a₁·t_go_floor² + (1/6)·k·t_go_floor³
   ```
 
-  At `τ_f` = 3 s the virtual target sits 68 m of profile past the real gate — the
-  `v_gate·τ_f` coast term corrected by the 19.5 m `½·a₁·τ_f²` term and the jerk
+  At `t_go_floor` = 3 s the virtual target sits 68 m of profile past the real gate — the
+  `v_gate·t_go_floor` coast term corrected by the 19.5 m `½·a₁·t_go_floor²` term and the jerk
   term, still ~230 m above the terrain — and carries a 13.1 m/s velocity offset.
-  Braking exits at `t_go = τ_f`, at which instant the ship occupies the *real* gate
+  Braking exits at `t_go = t_go_floor`, at which instant the ship occupies the *real* gate
   state to the law's tracking accuracy, the `1/t_go²` divergence never entered.
   Modelled closed-loop through this construction: drift at the gate 0.08 m/s, Δv and
   peak demand unchanged. The fallback if the virtual gate misbehaves is
@@ -304,7 +304,7 @@ The five pieces:
   modelled dip (2.0·X/v₀) and excludes both the short-burn wall and the hover branch
   beyond 3·X/v₀; the demand curve's non-monotonicity is established numerically for
   this geometry, not proved, so the bracket is load-bearing and stated in the code. In
-  flight `t_go` decrements by clock to `τ_f` — the second named departure from the
+  flight `t_go` decrements by clock to `t_go_floor` — the second named departure from the
   source, which re-solves every ~10 s; re-anchoring the schedule re-admits the
   moving-target class. Flown, decrement-only sheds nothing worth chasing: the demand
   trace runs a shallow U from 0.735 through 0.701 to 0.761 against an `f_max` of 0.85,
@@ -370,7 +370,7 @@ free of both as a rule). The altitude's own argument:
   a wrong `f_max` or stale mass shows as a persistent ratio error long before it shows
   as a saturated arrival.
 - *`t_go` error.* A wrong `t_go` mis-scales every command; the header logs the chosen
-  `t_go` against the planner's reference for the cross-check, and `τ_f` keeps the
+  `t_go` against the planner's reference for the cross-check, and `t_go_floor` keeps the
   divergence out of the loop.
 
 **High gate.** Two arrival checks, witnessed on the `# high gate` line before FALL
@@ -449,7 +449,7 @@ reading):
 - The demand curve's dip structure is established numerically for this craft and
   geometry, not analytically; the `t_go` bracket `[1.6, 2.6]·X/v₀` is load-bearing.
   A derivation of the dip and its bounds would retire the bracket.
-- `τ_f`, the `t_go` floor and virtual-gate offset, is family-of-`t_settle` and
+- `t_go_floor`, the exit floor and virtual-gate offset, is family-of-`t_settle` and
   underived.
 - Saturation response in braking — ride it or abort to orbit — is policy, Schuyler's
   call, and a named departure from the source's abort prescription.

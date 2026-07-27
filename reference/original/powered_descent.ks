@@ -20,8 +20,8 @@
 //      thrust demands are equal — the minimax, the cheapest profile the
 //      bracket holds — and decrements by clock.
 //   3. The law aims at a virtual gate: the real gate state propagated a
-//      floor time tau_f forward along the profile, position and velocity
-//      both, so braking exits at t_go = tau_f occupying the real gate
+//      floor time t_go_floor forward along the profile, position and velocity
+//      both, so braking exits at t_go = t_go_floor occupying the real gate
 //      state and the 1/t_go^2 divergence never enters.
 //   4. High gate opens the vertical corridor: total speed small enough
 //      that an f_max burn can rest the craft above the pad. Inside it at
@@ -95,18 +95,19 @@ if h_gate <= h_pad {
   wait until false.
 }
 
-// tau_f: the t_go floor and the virtual gate's propagation time, seconds.
+// t_go_floor: the floor t_go decrements to, and the virtual gate's
+// propagation time, seconds.
 // Family of a settle time — what a command reversal takes at steering
 // rates — and underived (register: Open).
-local tau_f is 3.
+local t_go_floor is 3.
 
 // The t_go bracket, in units of X/v0 (ground distance over ground speed).
 // It straddles the demand curve's dip (~2.0*X/v0) and excludes the
 // short-burn wall below and the hover branch beyond 3*X/v0. The dip
 // structure is established numerically for this geometry, not proved, so
 // the bracket is load-bearing (register: Open).
-local tau_lo_frac is 1.6.
-local tau_hi_frac is 2.6.
+local t_go_lo_frac is 1.6.
+local t_go_hi_frac is 2.6.
 
 // dem_frac: how finely the ignition solve resolves t_go, as a
 // fraction of the profile's own timescale X/v0 — a resolution
@@ -131,21 +132,21 @@ function dist_to_site {
 }
 
 // The guidance profile's two endpoint accelerations for boundary
-// conditions (r0 -> r_tgt, v0 -> v_tgt) flown in time tau: the commanded
+// conditions (r0 -> r_tgt, v0 -> v_tgt) flown in time t_go: the commanded
 // acceleration is linear in time, so these two points carry the whole
-// profile. dR is the position miss a pure coast would book at tau; dV the
+// profile. dR is the position miss a pure coast would book at t_go; dV the
 // velocity still to be removed.
-//   a0 =  6*dR/tau^2 - 2*dV/tau     (ignition end)
-//   a1 = -6*dR/tau^2 + 4*dV/tau     (gate end)
+//   a0 =  6*dR/t_go^2 - 2*dV/t_go     (ignition end)
+//   a1 = -6*dR/t_go^2 + 4*dV/t_go     (gate end)
 function profile_ends {
   parameter r0.      // ship-relative vector to the gate
   parameter v0_.     // surface velocity
   parameter v_tgt.   // gate-state velocity
-  parameter tau.
-  local d_r is r0 - v0_ * tau.
+  parameter t_go.
+  local d_r is r0 - v0_ * t_go.
   local d_v is v_tgt - v0_.
-  return list(d_r * (6 / tau ^ 2) - d_v * (2 / tau),
-              d_r * (-6 / tau ^ 2) + d_v * (4 / tau)).
+  return list(d_r * (6 / t_go ^ 2) - d_v * (2 / t_go),
+              d_r * (-6 / t_go ^ 2) + d_v * (4 / t_go)).
 }
 
 // Thrust demand at both profile endpoints, as fractions of available
@@ -153,8 +154,8 @@ function profile_ends {
 // priced at its own mass — the craft is ~20 % lighter at the gate, and
 // that difference is what decides whether the gate-end peak fits.
 function demand_pair {
-  parameter r0, v0_, v_tgt, tau, m0, m_gate, g_gate.
-  local ends is profile_ends(r0, v0_, v_tgt, tau).
+  parameter r0, v0_, v_tgt, t_go, m0, m_gate, g_gate.
+  local ends is profile_ends(r0, v0_, v_tgt, t_go).
   return list(
       (ends[0] - g_vec()):mag * m0 / ship:availablethrust,
       (ends[1] - g_gate):mag * m_gate / ship:availablethrust).
@@ -177,12 +178,12 @@ function solve_ignition {
   local g_gate is -up_site * (body:mu / r_gate ^ 2).
   local x_lead is dist_to_site().
   local v0_ is ship:velocity:surface.
-  local t_lo is tau_lo_frac * x_lead / v0_:mag.
-  local t_hi is tau_hi_frac * x_lead / v0_:mag.
+  local t_lo is t_go_lo_frac * x_lead / v0_:mag.
+  local t_hi is t_go_hi_frac * x_lead / v0_:mag.
 
   local m_gate is m0.
   local v_gate is 0.
-  local tau is 0.
+  local t_go is 0.
   local r0 is v(0, 0, 0).
   local v_tgt is v(0, 0, 0).
   local pass_ is 0.
@@ -195,7 +196,7 @@ function solve_ignition {
       local pair is demand_pair(r0, v0_, v_tgt, t_, m0, m_gate, g_gate).
       return pair[0] - pair[1]. }.
     // Bracket check before bisect, so its four-line failure print never
-    // tears the screen: the gate-end demand dominates at short tau, the
+    // tears the screen: the gate-end demand dominates at short t_go, the
     // ignition end at long, and a same-signed pair means the crossing —
     // and the dip — sits outside the bracket this design certifies.
     local gap_lo is gap(t_lo).
@@ -204,18 +205,18 @@ function solve_ignition {
       return lexicon("ok", false, "gap_lo", gap_lo, "gap_hi", gap_hi,
                      "x", x_lead).
     }
-    set tau to bisect(gap, t_lo, t_hi, dem_frac * x_lead / v0_:mag).
-    local pair is demand_pair(r0, v0_, v_tgt, tau, m0, m_gate, g_gate).
+    set t_go to bisect(gap, t_lo, t_hi, dem_frac * x_lead / v0_:mag).
+    local pair is demand_pair(r0, v0_, v_tgt, t_go, m0, m_gate, g_gate).
     // Propellant estimate: the thrust-acceleration trapezoid over the
     // profile, endpoints priced at their own masses via the demands.
     local dv_est is (pair[0] + pair[1]) / 2 * (ship:availablethrust / m0)
-                  * tau * (m0 / ((m0 + m_gate) / 2)).
+                  * t_go * (m0 / ((m0 + m_gate) / 2)).
     set m_gate to m0 * constant:e ^ (-dv_est / (engine_isp() * constant:g0)).
     set pass_ to pass_ + 1.
   }
-  local pair is demand_pair(r0, v0_, v_tgt, tau, m0, m_gate, g_gate).
-  local ends is profile_ends(r0, v0_, v_tgt, tau).
-  return lexicon("ok", true, "tau", tau, "m_gate", m_gate,
+  local pair is demand_pair(r0, v0_, v_tgt, t_go, m0, m_gate, g_gate).
+  local ends is profile_ends(r0, v0_, v_tgt, t_go).
+  return lexicon("ok", true, "t_go", t_go, "m_gate", m_gate,
                  "v_gate", v_gate, "dip", max(pair[0], pair[1]),
                  "a0", ends[0], "a1", ends[1], "x", x_lead).
 }
@@ -312,18 +313,18 @@ if not sol["ok"] {
 } else {
 
 // === BRAKING ===
-local tau is sol["tau"].
+local t_go_ign is sol["t_go"].
 local v_gate is sol["v_gate"].
 // The virtual gate's frozen pieces: the profile's gate-end acceleration
 // and its jerk, raw-frame vectors captured at the solve. The body rotates
 // under them ~0.4 deg over the burn — sub-metre on offsets this size —
 // while the gate's position and vertical are rebuilt live each tick from
 // the target, so the aim point rides the rotating ground exactly.
-local k_jerk is (sol["a1"] - sol["a0"]) * (1 / tau).
-local off_v is sol["a1"] * tau_f + k_jerk * (tau_f ^ 2 / 2).
-local off_p is sol["a1"] * (tau_f ^ 2 / 2) + k_jerk * (tau_f ^ 3 / 6).
+local k_jerk is (sol["a1"] - sol["a0"]) * (1 / t_go_ign).
+local off_v is sol["a1"] * t_go_floor + k_jerk * (t_go_floor ^ 2 / 2).
+local off_p is sol["a1"] * (t_go_floor ^ 2 / 2) + k_jerk * (t_go_floor ^ 3 / 6).
 local t_ign is time:seconds.
-local t_total is tau + tau_f.
+local t_total is t_go_ign + t_go_floor.
 
 // The live guidance command: the same closed form as the solve, evaluated
 // each tick at the current state against the virtual gate, t_go running
@@ -332,7 +333,7 @@ local t_total is tau + tau_f.
 local t_go is t_total.
 function brake_cmd {
   local up_site is (tgt:position - body:position):normalized.
-  local r0 is tgt:position + up_site * (h_gate - v_gate * tau_f) + off_p.
+  local r0 is tgt:position + up_site * (h_gate - v_gate * t_go_floor) + off_p.
   local v_tgt is -up_site * v_gate + off_v.
   local d_r is r0 - ship:velocity:surface * t_go.
   local d_v is v_tgt - ship:velocity:surface.
@@ -340,7 +341,7 @@ function brake_cmd {
   return a_cmd - g_vec().
 }
 
-print "BRAKE: t_go " + round(tau, 1) + " s, dip demand "
+print "BRAKE: t_go " + round(t_go_ign, 1) + " s, dip demand "
     + round(sol["dip"], 3) + ", " + round(sol["x"] / 1000, 1)
     + " km to the site.".
 // Deploy the legs now, not at terminal entry: ship:bounds must be read
@@ -352,7 +353,7 @@ gear on.
 
 log "# h_pdi " + round(ship:altitude) + "  speed_pdi "
     + round(ship:velocity:surface:mag, 1)
-    + "  t_go " + round(tau, 1) + "  dip " + round(sol["dip"], 3)
+    + "  t_go " + round(t_go_ign, 1) + "  dip " + round(sol["dip"], 3)
     + "  v_gate " + round(v_gate, 1) + "  m_gate " + round(sol["m_gate"], 3)
     + "  dist " + round(sol["x"])
     + "  dv_at_pdi " + round(ship:deltav:current, 1) to flightlog.
@@ -374,8 +375,8 @@ local clear_min is alt:radar.
 local prev_v is ship:velocity:surface.
 local prev_t is time:seconds.
 local prev_cmd is brake_cmd().
-until t_go <= tau_f {
-  set t_go to max(tau_f, t_total - (time:seconds - t_ign)).
+until t_go <= t_go_floor {
+  set t_go to max(t_go_floor, t_total - (time:seconds - t_ign)).
   set clear_min to min(clear_min, alt:radar).
   if time:seconds - t_logged >= 1 {
     local cmd is brake_cmd().
@@ -385,7 +386,7 @@ until t_go <= tau_f {
     local a_meas is (ship:velocity:surface - prev_v) * (1 / dt_row) - g_vec().
     local ach is a_meas:mag / max(0.001, prev_cmd:mag).
     local up_site is (tgt:position - body:position):normalized.
-    local zem is (tgt:position + up_site * (h_gate - v_gate * tau_f) + off_p
+    local zem is (tgt:position + up_site * (h_gate - v_gate * t_go_floor) + off_p
                   - ship:velocity:surface * t_go):mag.
     log_state("BRAKE", t_go, zem, dem, cmd, ach,
         vdot(tgt:position, vcrs(ship:velocity:surface, up:vector):normalized),
