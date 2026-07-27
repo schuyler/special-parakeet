@@ -1,31 +1,33 @@
 // powered_descent.ks — the powered descent, reduced to its invariants.
 //
-// This file assumes the plan is good: it carries no envelope protection and
-// no coping for a plan that missed.
-// Design and the full argument: notes/powered-descent-invariants.md.
+// This file assumes the plan is good: it checks feasibility once at PDI —
+// declining to ignite on a stable ellipse is the abort — and carries no
+// other envelope protection.
+// Design and the full argument: notes/klumpp-descent-redesign.md.
 //
 // Assumes (plan_doi.ks's contract): the DOI burn is behind us, PDI is the
-// periapsis of the ellipse we are on, the corridor under the arc is
-// certified, and the orbital plane passes near the site. landing_height
-// appears nowhere below: the planner already spent it into the ellipse, so
-// the arc reaches the surface near the site without this program ever knowing
-// the number.
+// periapsis of the ellipse we are on, the planner sized the ground lead so
+// the guidance profile's peak thrust demand sits at its reserved throttle,
+// and the orbital plane passes near the site.
 //
 // Five ideas, one per section:
-//   1. Hold thrust retrograde and the trajectory is a one-parameter
-//      family: current state plus throttle determines the whole arc.
-//   2. Euler's method draws the arc: rates times a small dt, summed.
-//   3. The predicted touchdown point falls back as throttle rises, so
-//      bisection finds the one throttle whose arc — integrated through the
-//      coast and the arrest burn — comes to rest at the site. Re-solving
-//      every few seconds from live state replaces plan, table, and trim.
-//   4. A small lateral bias on the retrograde hold closes the plane onto
-//      the site while the ship is fast, where a degree costs least.
-//   5. Terminal is the same retrograde hold flown to the ground: a coast
-//      from high gate until f_max can just arrest the speed at the pad,
-//      then the arrest burn. Thrust opposite the velocity takes drift and
-//      descent rate together, and gravity uprights the velocity vector as
-//      the horizontal dies, so touchdown is plumb without a lateral law.
+//   1. One vector law flies braking: commanded acceleration from position
+//      and velocity errors against the gate state, closed form, no
+//      integration — a_cmd = 6*dR/t_go^2 - 2*dV/t_go carries both errors
+//      to zero as t_go runs out (Klumpp's guidance, Apollo P63's law).
+//   2. t_go is chosen once at ignition where the profile's two endpoint
+//      thrust demands are equal — the minimax, the cheapest profile the
+//      bracket holds — and decrements by clock.
+//   3. The law aims at a virtual gate: the real gate state propagated a
+//      floor time tau_f forward along the profile, position and velocity
+//      both, so braking exits at t_go = tau_f occupying the real gate
+//      state and the 1/t_go^2 divergence never enters.
+//   4. High gate opens the vertical corridor: total speed small enough
+//      that an f_max burn can rest the craft above the pad. Inside it at
+//      the gate, the arrest schedule always fires above the pad.
+//   5. Terminal is the flown chain kept whole: FALL — engine off,
+//      retrograde hold, drift already nulled — then the arrest burn from
+//      the schedule, plumb below walking speed, settle.
 
 @lazyglobal off.
 
@@ -33,221 +35,154 @@ clearscreen.
 print "=== POWERED DESCENT ===".
 
 run "common".              // engine_isp
-run "../core/kepler".      // orbital_speed, ground_track_distance;
-                           // bisect rides along
+run "../core/kepler".      // geoposition_at, wrap_longitude; bisect rides along
 
 parameter target_lat is 0.
 parameter target_lng is 0.
 parameter f_max is 0.85.
+parameter plan_pe_lng is 999.  // planner's wanted periapsis longitude, deg;
+                               // 999 = not supplied, witness logs delivered only
 
 local tgt is body:geopositionlatlng(target_lat, target_lng).
-local mdot_full is ship:availablethrust / (engine_isp() * constant:g0).
 local ipu_prior is config:ipu.
+// Raised for the ignition solve, kept for the flight: the solve's bisection
+// costs about a second of game time at the default rate, and a second at
+// PDI is ~560 m of along-track — a third of the delivery window spent on
+// arithmetic. At 2000 the solve fits in a tenth of a second.
 set config:ipu to 2000.
 
-// Integration tolerances for endpoint's Euler steps — accuracy bounds, not
-// craft or body numbers. pitch_tol caps the flight-path rotation per step
-// (degrees); v_frac caps the fractional speed change per step.
-local pitch_tol is 1.
-local v_frac is 0.02.
-
-// Descent geometry, shared by the planning integration and the flight.
-// g0 is surface gravity; tilt_max the flight-path angle off vertical at
-// which braking hands to terminal — past it the retrograde hold is a
-// near-hover, terminal's deliberate job; h_pad the flare height; v_floor
-// the touchdown descent rate.
+// Descent geometry. g0 is surface gravity; h_pad the flare height; v_floor
+// the touchdown descent rate; v_switch the speed below which the surface
+// retrograde direction is mostly noise and the nose goes to plumb — a
+// small tolerance, not a landing number.
 local g0 is body:mu / body:radius ^ 2.
-local tilt_max is 30.
 local h_pad is 5.
 local v_floor is 2.
+local v_switch is 5.
 
-// y_floor: the cross-range residual braking is asked to leave at high
-// gate, metres. The floor is the downstream error budget, not a craft
-// number: terminal contributes ~17 m of measured wander of its own, so
-// driving braking's residual below ~20 m spends yaw — and yaw's
-// unmodelled reach cost — on error the next phase re-creates. The <= 10 m
-// campaign lowers this floor as terminal's wander is beaten down; k_yaw
-// then rises through its own formula.
-local y_floor is 20.
+// h_gate: high gate's height above the site's terrain — the design's one
+// terrain-clearance input. Sized to contain the arrest with a factor
+// k_gate ~ 2 in hand: low gate falls near h_gate/2 (the corridor's
+// mid-target entered at v_gate makes h_lg = h_pad +
+// (v_gate^2 + 2*g0*(h_gate - h_pad)) / (2*(a_dec + g0)) ~ h_gate/2), so
+// the schedule fires with as much altitude below it as the burn needs.
+// Craft- and body-free as a ratio; the flown anchor is the fixbatch
+// flight's 283 m gate arresting at radar 127.
+local h_gate is 300.
 
-// f_bracket: half-width of the throttle bracket handed to each in-loop
-// re-solve, seeded from the previous root. Sized from the root's per-look
-// drift, not chosen: (per-look reach error ~100 m) / (dReach/df ≈ 47 km
-// per unit f) ≈ 0.002 mid-burn, and 0.05 covers roughly 25 times that,
-// because metres-per-throttle collapses approaching the tilt_max + 10
-// cutoff, where a bracket this wide still has to widen to the hard limits
-// — the nominal case there, not the exception. A too-narrow bracket costs
-// one widening march per look (real time, displacing flown flight); it
-// never costs accuracy, since the widening always reaches the true root.
-local f_bracket is 0.05.
+// tau_f: the t_go floor and the virtual gate's propagation time, seconds.
+// Family of a settle time — what a command reversal takes at steering
+// rates — and underived (register: Open).
+local tau_f is 3.
 
-// Where the arc from state st at throttle f touches down: the whole descent
-// under one set of Euler equations — braking, coast, and arrest burn — with
-// only the thrust level switching, at the boundaries the flight itself
-// uses. Braking thrusts retrograde at f until the flight path passes
-// tilt_max short of vertical (high gate); the coast thrusts nothing; the
-// arrest burn thrusts retrograde at f_max from the moment f_max could just
-// bring the speed to rest a flare height above the site — the same
-// schedule the flight ignites on, in flight referenced to the craft's
-// lowest point, a metres-scale offset this model ignores. Thrust takes
-// speed; gravity's along-path part adds speed back as the nose drops; its
-// across-path part turns the path down at g*cos(pitch)/speed while the
-// horizon rotates away under the ship at speed*cos(pitch)/r — the two
-// rates whose difference is the turn.
-//
-// dt is the smaller of the time to rotate the flight path by pitch_tol and
-// the time to change speed by v_frac of itself, so the step refines where the
-// path bends over; the step cap is a non-convergence guard. The integration
-// ends at the ground (h <= tgt:terrainheight — the site's surface, not the
-// datum) or at walking speed, where the model's retrograde direction loses
-// meaning and the remaining fall is vertical. x is the ground distance to
-// that point, t the time to it, and t_brake the time spent braking — the
-// horizon the yaw law's time constant is cut from.
-function endpoint {
-  parameter f.
-  parameter st.   // start state: "speed" m/s, "pitch" deg above horizon,
-                  // "h" m above the datum, "m" tonnes
-  local speed is st["speed"].
-  local pitch is st["pitch"].
-  local h is st["h"].
-  local m is st["m"].
-  local theta is 0.                // ground angle swept, radians
-  local t is 0.
-  local t_brake is 0.
-  local steps is 0.
-  local phase_ is "BRAKE".
-  until h <= tgt:terrainheight or speed < v_floor or steps >= 4000 {
-    local r_ is body:radius + h.
-    local g is body:mu / r_ ^ 2.
-    if phase_ = "BRAKE" and pitch <= tilt_max - 90 {
-      set phase_ to "COAST".
-      set t_brake to t.
-    }
-    if phase_ = "COAST"
-        and speed ^ 2 >= 2 * (f_max * ship:availablethrust / m - g)
-                       * max(0, h - tgt:terrainheight - h_pad) {
-      set phase_ to "ARREST".
-    }
-    local f_now is choose f if phase_ = "BRAKE"
-                   else (choose 0 if phase_ = "COAST" else f_max).
-    local a_thr is f_now * ship:availablethrust / m.
-    local turn_rate is speed / r_ - g / speed.
-    local dt_angle is pitch_tol
-                    / (max(1e-6, abs(turn_rate)) * constant:radtodeg).
-    local dt_speed is v_frac * speed / (a_thr + g).
-    local dt is min(dt_angle, dt_speed).
-    local d_speed is (-a_thr - g * sin(pitch)) * dt.
-    local d_pitch is turn_rate * cos(pitch) * constant:radtodeg * dt.
-    set h     to h     + speed * sin(pitch) * dt.
-    set theta to theta + speed * cos(pitch) / r_ * dt.
-    set speed to speed + d_speed.
-    set pitch to pitch + d_pitch.
-    set m     to m     - f_now * mdot_full * dt.
-    set t     to t     + dt.
-    set steps to steps + 1.
-  }
-  if phase_ = "BRAKE" { set t_brake to t. }
-  return lexicon("x", theta * body:radius, "t", t, "t_brake", t_brake).
+// The t_go bracket, in units of X/v0 (ground distance over ground speed).
+// It straddles the demand curve's dip (~2.0*X/v0) and excludes the
+// short-burn wall below and the hover branch beyond 3*X/v0. The dip
+// structure is established numerically for this geometry, not proved, so
+// the bracket is load-bearing (register: Open).
+local tau_lo_frac is 1.6.
+local tau_hi_frac is 2.6.
+
+// Gravity as a vector at the ship: body:position points from ship to the
+// body's center, so this is the downward pull, live each read.
+function g_vec {
+  return body:position:normalized * (body:mu / body:position:mag ^ 2).
 }
 
-// The ship's state this instant, in endpoint's variables. Captured once per
-// solve so every bisection evaluation prices the same problem: the marches
-// take game seconds, the ship keeps flying, and a state read fresh
-// mid-solve walks the root during the search.
-function live_state {
-  local speed is ship:velocity:surface:mag.
-  return lexicon("speed", speed,
-      "pitch", arcsin(min(1, max(-1, verticalspeed / speed))),
-      "h", ship:altitude,
-      "m", ship:mass).
-}
-
-// The state at the coming periapsis, where ignition happens: altitude off
-// the ellipse; speed from vis-viva less the ground's eastward motion,
-// because the arc is flown against the ground; flight path level, periapsis
-// being horizontal; the mass now, the coast burning nothing.
-function pdi_state {
-  local h_pe is ship:orbit:periapsis.
-  return lexicon(
-      "speed", orbital_speed(h_pe, ship:orbit)
-             - 2 * constant:pi * (body:radius + h_pe) / body:rotationperiod,
-      "pitch", 0,
-      "h", h_pe,
-      "m", ship:mass).
-}
-
-// Great-circle ground distance to the site — the measure endpoint's x is in.
+// Great-circle ground distance to the site.
 function dist_to_site {
   return body:radius * constant:degtorad
        * vang(ship:position - body:position, tgt:position - body:position).
 }
 
-// The in-plane ground distance to the site: the great-circle distance
-// with the cross-plane part removed. The throttle spends reach only along
-// the velocity's own ground track; the cross part is the yaw channel's to
-// close, and aiming the solve at the full distance sends the throttle
-// chasing ground it cannot cover — sideways.
-function aim_distance {
-  parameter cross_ is vdot(tgt:position,
-      vcrs(ship:velocity:surface, up:vector):normalized).
-  return sqrt(max(0, dist_to_site() ^ 2 - cross_ ^ 2)).
+// The guidance profile's two endpoint accelerations for boundary
+// conditions (r0 -> r_tgt, v0 -> v_tgt) flown in time tau: the commanded
+// acceleration is linear in time, so these two points carry the whole
+// profile. dR is the position miss a pure coast would book at tau; dV the
+// velocity still to be removed.
+//   a0 =  6*dR/tau^2 - 2*dV/tau     (ignition end)
+//   a1 = -6*dR/tau^2 + 4*dV/tau     (gate end)
+function profile_ends {
+  parameter r0.      // ship-relative vector to the gate
+  parameter v0_.     // surface velocity
+  parameter v_tgt.   // gate-state velocity
+  parameter tau.
+  local d_r is r0 - v0_ * tau.
+  local d_v is v_tgt - v0_.
+  return list(d_r * (6 / tau ^ 2) - d_v * (2 / tau),
+              d_r * (-6 / tau ^ 2) + d_v * (4 / tau)).
 }
 
-// The throttle whose arc from state st covers d_aim, with the invariants
-// register's feasibility ordering folded in ("Two conditions, one knob",
-// case 2). The problem is frozen — st and d_aim never change during the
-// search — so the root is the root of one problem, not a truncation
-// against a moving target. Reach falls strictly as f rises, so a seed
-// endpoint with the wrong sign says which way the root left the bracket,
-// and one widening to the hard limit settles it. Each endpoint state is
-// marched once; bisect re-reads its endpoints, and the closure answers
-// those from the values in hand. The f = 0 probe from a near-orbital
-// state runs to the step cap, and its x is a sign, not a distance —
-// reach beyond d_aim is all the branch reads from it.
-// Returns "case" plus the arc of the returned throttle:
-//   "OK"        — a root exists in [0, f_max]; "f" is the root.
-//   "OVERSHOOT" — even the f_max arc ends past the site; "f" is f_max,
-//                 the throttle that books the smallest overshoot
-//                 (invariants case 2: fly it, eat it, say so).
-//   "SHORT"     — even the f = 0 arc lands short; "f" is f_max — the
-//                 safety choice, not the accuracy one (see the register
-//                 debt note) — and "x_best" carries the f = 0 arc's
-//                 reach, the smallest shortfall any throttle books.
-function solve_arc {
-  parameter st.
-  parameter d_aim.
-  parameter f_lo is 0.
-  parameter f_hi is f_max.
+// Thrust demand at both profile endpoints, as fractions of available
+// thrust: |a - g| is what the engine must supply, and each endpoint is
+// priced at its own mass — the craft is ~20 % lighter at the gate, and
+// that difference is what decides whether the gate-end peak fits.
+function demand_pair {
+  parameter r0, v0_, v_tgt, tau, m0, m_gate, g_gate.
+  local ends is profile_ends(r0, v0_, v_tgt, tau).
+  return list(
+      (ends[0] - g_vec()):mag * m0 / ship:availablethrust,
+      (ends[1] - g_gate):mag * m_gate / ship:availablethrust).
+}
 
-  local e_hi is endpoint(f_hi, st).
-  if e_hi["x"] > d_aim and f_hi < f_max {   // root above the seed's top
-    set f_hi to f_max.
-    set e_hi to endpoint(f_max, st).
+// The ignition solve: t_go where the two endpoint demands cross — the
+// minimax, since the commanded profile is linear in time and its demand
+// peak therefore sits at an endpoint; equalizing the endpoints minimizes
+// the peak, and the crossing is unique on the bracket (unimodal there,
+// validated numerically). Wrapped in a two-pass gate-mass iteration: the
+// gate mass sets both v_gate (through a_dec) and the gate-end demand, and
+// each pass shrinks the mass error by roughly the propellant fraction
+// (~0.2) — a contraction, two passes leave it below a tenth of a percent.
+// Returns the solution, or "ok" false with both bracket-end demand gaps
+// when the crossing left the bracket — the infeasibility witness.
+function solve_ignition {
+  local m0 is ship:mass.
+  local r_gate is body:radius + tgt:terrainheight + h_gate.
+  local up_site is (tgt:position - body:position):normalized.
+  local g_gate is -up_site * (body:mu / r_gate ^ 2).
+  local x_lead is dist_to_site().
+  local v0_ is ship:velocity:surface.
+  local t_lo is tau_lo_frac * x_lead / v0_:mag.
+  local t_hi is tau_hi_frac * x_lead / v0_:mag.
+
+  local m_gate is m0.
+  local v_gate is 0.
+  local tau is 0.
+  local r0 is v(0, 0, 0).
+  local v_tgt is v(0, 0, 0).
+  local pass_ is 0.
+  until pass_ >= 2 {
+    local a_dec is f_max * ship:availablethrust / m_gate - g0.
+    set v_gate to sqrt(2 * a_dec * (h_gate - h_pad)) / 2.
+    set r0 to tgt:position + up_site * h_gate.
+    set v_tgt to -up_site * v_gate.
+    local gap is { parameter t_.
+      local d is demand_pair(r0, v0_, v_tgt, t_, m0, m_gate, g_gate).
+      return d[0] - d[1]. }.
+    // Bracket check before bisect, so its four-line failure print never
+    // tears the screen: the gate-end demand dominates at short tau, the
+    // ignition end at long, and a same-signed pair means the crossing —
+    // and the dip — sits outside the bracket this design certifies.
+    local gap_lo is gap(t_lo).
+    local gap_hi is gap(t_hi).
+    if gap_lo * gap_hi > 0 {
+      return lexicon("ok", false, "gap_lo", gap_lo, "gap_hi", gap_hi,
+                     "x", x_lead).
+    }
+    set tau to bisect(gap, t_lo, t_hi, 0.05).
+    local d is demand_pair(r0, v0_, v_tgt, tau, m0, m_gate, g_gate).
+    // Propellant estimate: the thrust-acceleration trapezoid over the
+    // profile, endpoints priced at their own masses via the demands.
+    local dv_est is (d[0] + d[1]) / 2 * (ship:availablethrust / m0) * tau
+                  * (m0 / ((m0 + m_gate) / 2)).
+    set m_gate to m0 * constant:e ^ (-dv_est / (engine_isp() * constant:g0)).
+    set pass_ to pass_ + 1.
   }
-  if e_hi["x"] > d_aim {
-    return lexicon("case", "OVERSHOOT", "f", f_max, "x", e_hi["x"],
-                   "t", e_hi["t"], "t_brake", e_hi["t_brake"]).
-  }
-  local e_lo is endpoint(f_lo, st).
-  if e_lo["x"] <= d_aim and f_lo > 0 {      // root below the seed's bottom
-    set f_lo to 0.
-    set e_lo to endpoint(0, st).
-  }
-  if e_lo["x"] <= d_aim {
-    return lexicon("case", "SHORT", "f", f_max, "x", e_hi["x"],
-                   "t", e_hi["t"], "t_brake", e_hi["t_brake"],
-                   "x_best", e_lo["x"]).
-  }
-  local m_lo is e_lo["x"] - d_aim.
-  local m_hi is e_hi["x"] - d_aim.
-  local miss_ is { parameter f_.
-    if f_ = f_lo { return m_lo. }
-    if f_ = f_hi { return m_hi. }
-    return endpoint(f_, st)["x"] - d_aim. }.
-  local f_ is bisect(miss_, f_lo, f_hi, 0.001).
-  local e is endpoint(f_, st).
-  return lexicon("case", "OK", "f", f_, "x", e["x"], "t", e["t"],
-                 "t_brake", e["t_brake"]).
+  local d is demand_pair(r0, v0_, v_tgt, tau, m0, m_gate, g_gate).
+  local ends is profile_ends(r0, v0_, v_tgt, tau).
+  return lexicon("ok", true, "tau", tau, "m_gate", m_gate,
+                 "v_gate", v_gate, "d_dip", max(d[0], d[1]),
+                 "a0", ends[0], "a1", ends[1], "x", x_lead).
 }
 
 // === FLIGHT RECORDER ===
@@ -255,27 +190,31 @@ function solve_arc {
 // planning numbers the flight is judged against.
 local flightlog is "flight_log.csv".
 
+// zem: the position miss a pure coast would book at the virtual gate —
+// the law's own error measure, zero when the profile is converged. dem:
+// commanded thrust demand as a fraction of available — above f_max is
+// saturation, and the demand-vs-f_max trace is the feasibility witness.
+// ach: achieved thrust acceleration over commanded, from the velocity
+// difference since the last row — a persistent ratio off 1 is a wrong
+// f_max or a stale mass, visible long before it is a saturated arrival.
+// clear: running minimum radar altitude — instrumentation for the
+// braking-arc clearance no rule yet covers (register: Open).
 function log_state {
-  parameter phase, t_go, a_thrust, cross, d_aim.
+  parameter phase, t_go_, zem, dem, cmd_vec, ach, cross, clear.
   local to_site is vxcl(up:vector, tgt:position):normalized.
-  // cmd_yaw's retrograde reference collapses to zero length once the ship
-  // stops; substitute a_thrust's own direction then, the same guard the
-  // a_thrust argument already carries at its call sites via max(0.001, ...).
-  local retro_ is choose -ship:velocity:surface
-      if ship:velocity:surface:mag > 0.001 else a_thrust.
-  log round(time:seconds, 1) + "," + phase + "," + round(t_go, 1) + ","
+  log round(time:seconds, 1) + "," + phase + "," + round(t_go_, 1) + ","
       + round(altitude) + "," + round(alt:radar) + ","
       + round(vdot(ship:velocity:surface, to_site), 1) + ","
       + round(verticalspeed, 1) + ","
-      + round(tgt:position:mag) + ","
-      + round(a_thrust:mag, 2) + "," + round(throttle, 3) + ","
-      + round(vang(a_thrust, ship:facing:vector), 1) + ","
+      + round(zem) + ","
+      + round(dem, 3) + "," + round(throttle, 3) + ","
+      + round(vang(cmd_vec, ship:facing:vector), 1) + ","
       + round(ship:mass, 3) + "," + round(ship:deltav:current, 1) + ","
       + round(90 - vang(up:vector, ship:facing:vector), 1) + ","
-      + round(90 - vang(up:vector, a_thrust), 1) + ","
-      + round(vang(a_thrust, retro_), 1) + ","
+      + round(90 - vang(up:vector, cmd_vec), 1) + ","
+      + round(ach, 3) + ","
       + round(cross) + ","
-      + round(d_aim)
+      + round(clear)
       to flightlog.
 }
 
@@ -286,207 +225,177 @@ wait until eta:periapsis <= 60.
 sas off.                   // kOS warns at run time that SAS fights lock steering
 lock steering to srfretrograde.
 
-// Solve the ignition throttle for the state the ship will have at
-// periapsis, not the state it has now. Solved for a future state, the
-// solve's own duration is free: the answer is applied at the instant it
-// was solved for, however long the marches take. The aim distance is
-// measured to where the site will be at ignition — the ground rotates
-// east under the coast — while the cross part is read from the present
-// geometry: the orbital plane is fixed in space, and the site's
-// cross-plane motion over the coast is metres.
+// The delivery witness, logged the moment the coast ends: the body-fixed
+// longitude periapsis will arrive at, against the planner's want when
+// supplied — the one line that separates a plan that missed from a burn
+// that delivered it wrong (notes/node-delivery-window.md).
 local t_pdi is time + eta:periapsis.
-local n_seed is vcrs(ship:velocity:surface, up:vector):normalized.
-local cross_seed is vdot(tgt:position, n_seed).
-local d_aim is sqrt(max(0,
-    ground_track_distance(t_pdi, tgt, ship:orbit) ^ 2 - cross_seed ^ 2)).
-local sol is solve_arc(pdi_state(), d_aim).
-local f_cmd is sol["f"].
-if sol["case"] = "OVERSHOOT" {
-  print "OVERSHOOT at ignition: flying f_max, smallest overshoot "
-      + round(sol["x"] - d_aim) + " m.".
-}
-if sol["case"] = "SHORT" {
-  print "SHORT at ignition: flying f_max, best reach "
-      + round(d_aim - sol["x_best"]) + " m short.".
-}
-local t_go is sol["t"].                // time to predicted touchdown
-// k_yaw: e-foldings of the ignition cross-range offset the yaw channel
-// removes during braking; the high-gate residual is e^-k_yaw of the
-// offset. Derived, not chosen: ln(offset / y_floor) is exactly the count
-// that lands the residual on the floor — deeper spends yaw (and its
-// unmodelled reach cost) on error the next phase re-creates, shallower
-// leaves cross-range nothing downstream can fix. Clamped to [1, 5]: the
-// clamp bounds k, not the yaw the command spends — above k = 5 the offset
-// is outside any plan this planner certifies, and a failed plan should be
-// re-planned, not answered with a yaw command left to grow unchecked.
-local k_yaw is min(5, max(1, ln(max(0.001, abs(cross_seed)) / y_floor))).
-// The plane-closing time constant: the braking horizon cut into k_yaw
-// e-foldings, frozen at ignition from the periapsis-state arc so the
-// shrinking horizon never demands a growing bias for whatever remains.
-local tau_yaw is sol["t_brake"] / k_yaw.
-
-// === BRAKING ===
-wait until time:seconds >= t_pdi:seconds.
-print "BRAKE: f " + round(f_cmd, 3) + ", "
-    + round(dist_to_site() / 1000, 1) + " km to the site.".
-// Deploy the legs now, not at terminal entry: ship:bounds must be read
-// after the craft has finished changing shape — a cached bounds goes
-// stale on gear deployment — and the braking burn gives the animation
-// two minutes where the terminal coast may give seconds. In vacuum the
-// deployed gear costs nothing.
-gear on.
-
 if exists(flightlog) { deletepath(flightlog). }
 log "# target " + round(target_lat, 4) + " " + round(target_lng, 4)
     + "  terrain " + round(tgt:terrainheight) + " m" to flightlog.
+local pe_lng is geoposition_at(t_pdi, ship:orbit):lng.
+log "# pe  lng " + round(pe_lng, 3) + "  site_lng " + round(tgt:lng, 3)
+    + "  lead " + round(wrap_longitude(tgt:lng - pe_lng), 3) + " deg"
+    + (choose "  want " + round(plan_pe_lng, 3) + "  err "
+           + round(wrap_longitude(pe_lng - plan_pe_lng), 3)
+       if plan_pe_lng < 999 else "") to flightlog.
+
+// === IGNITION ===
+// The t_go choice is made from the delivered state — delivery error and
+// the ellipse's actual flight-path angle are absorbed into the schedule
+// here, not carried as command margin. The reserve from the planned dip
+// (at the planner's f_cap) up to f_max covers what arrives after
+// ignition: model error, steering lag, the decrementing clock's drift.
+wait until time:seconds >= t_pdi:seconds.
+local sol is solve_ignition().
+
+if not sol["ok"] {
+  // Declining to ignite is the abort: the ship sits at the periapsis of a
+  // stable, quicksave-able ellipse, and a profile whose demand crossing
+  // left the bracket is not one this design certifies.
+  print "PDI INFEASIBLE: demand crossing outside bracket "
+      + "(gap_lo " + round(sol["gap_lo"], 3)
+      + ", gap_hi " + round(sol["gap_hi"], 3) + "). Not igniting.".
+  log "# infeasible  gap_lo " + round(sol["gap_lo"], 3)
+      + "  gap_hi " + round(sol["gap_hi"], 3)
+      + "  dist " + round(sol["x"]) to flightlog.
+  unlock steering.
+  sas on.
+  set config:ipu to ipu_prior.
+} else if sol["d_dip"] > f_max {
+  print "PDI INFEASIBLE: dip demand " + round(sol["d_dip"], 3) + " > f_max "
+      + round(f_max, 3) + ". Not igniting.".
+  log "# infeasible  d_dip " + round(sol["d_dip"], 3)
+      + "  f_max " + round(f_max, 3)
+      + "  dist " + round(sol["x"]) to flightlog.
+  unlock steering.
+  sas on.
+  set config:ipu to ipu_prior.
+} else {
+
+// === BRAKING ===
+local tau is sol["tau"].
+local v_gate is sol["v_gate"].
+// The virtual gate's frozen pieces: the profile's gate-end acceleration
+// and its jerk, raw-frame vectors captured at the solve. The body rotates
+// under them ~0.4 deg over the burn — sub-metre on offsets this size —
+// while the gate's position and vertical are rebuilt live each tick from
+// the target, so the aim point rides the rotating ground exactly.
+local k_jerk is (sol["a1"] - sol["a0"]) * (1 / tau).
+local off_v is sol["a1"] * tau_f + k_jerk * (tau_f ^ 2 / 2).
+local off_p is sol["a1"] * (tau_f ^ 2 / 2) + k_jerk * (tau_f ^ 3 / 6).
+local t_ign is time:seconds.
+local t_total is tau + tau_f.
+
+// The live guidance command: the same closed form as the solve, evaluated
+// each tick at the current state against the virtual gate, t_go running
+// down by clock. Position and velocity targets rebuild the vertical from
+// the live site direction; only the profile-extension offsets are frozen.
+local t_go is t_total.
+function brake_cmd {
+  local up_site is (tgt:position - body:position):normalized.
+  local r0 is tgt:position + up_site * (h_gate - v_gate * tau_f) + off_p.
+  local v_tgt is -up_site * v_gate + off_v.
+  local d_r is r0 - ship:velocity:surface * t_go.
+  local d_v is v_tgt - ship:velocity:surface.
+  local a_cmd is d_r * (6 / t_go ^ 2) - d_v * (2 / t_go).
+  return a_cmd - g_vec().
+}
+
+print "BRAKE: t_go " + round(tau, 1) + " s, dip demand "
+    + round(sol["d_dip"], 3) + ", " + round(sol["x"] / 1000, 1)
+    + " km to the site.".
+// Deploy the legs now, not at terminal entry: ship:bounds must be read
+// after the craft has finished changing shape — a cached bounds goes
+// stale on gear deployment — and the braking burn gives the animation
+// two minutes where FALL may give seconds. In vacuum the deployed gear
+// costs nothing.
+gear on.
+
 log "# h_pdi " + round(ship:altitude) + "  speed_pdi "
-    + round(ship:velocity:surface:mag, 1) + "  f_ignition " + round(f_cmd, 4)
-    + "  t_go " + round(t_go, 1) + "  dist " + round(dist_to_site())
-    + "  dv_at_pdi " + round(ship:deltav:current, 1)
-    + "  t_brake " + round(sol["t_brake"], 1)
-    + "  tau_yaw " + round(tau_yaw, 1) to flightlog.
-log "t,phase,t_go,alt,radar,v_to_site,v_vert,aim_dist,a_cmd,throttle,facing_err,mass,dv_rem,pitch,cmd_pitch,cmd_yaw,cross,d_aim"
+    + round(ship:velocity:surface:mag, 1)
+    + "  t_go " + round(tau, 1) + "  d_dip " + round(sol["d_dip"], 3)
+    + "  v_gate " + round(v_gate, 1) + "  m_gate " + round(sol["m_gate"], 3)
+    + "  dist " + round(sol["x"])
+    + "  dv_at_pdi " + round(ship:deltav:current, 1) to flightlog.
+log "t,phase,t_go,alt,radar,v_to_site,v_vert,zem,dem,throttle,facing_err,mass,dv_rem,pitch,cmd_pitch,ach_ratio,cross,clear_min"
     to flightlog.
-if not (sol["case"] = "OK") {
-  log "# case " + sol["case"] + "  at_ignition  f " + round(f_cmd, 3)
-      + "  d_aim " + round(d_aim) + "  x " + round(sol["x"])
-      + (choose "  x_best " + round(sol["x_best"])
-             if sol["case"] = "SHORT" else "") to flightlog.
-}
 
-// Retrograde, biased to close the plane. n is built from the velocity, so
-// v . n = 0 identically: a yaw never pushes the ship sideways, it turns
-// the ground track, and the offset y closes at (azimuth turn rate) * X,
-// with X the in-plane ground distance remaining. A pretend cross-speed b
-// turns the track at a_thr * b / (speed * v_h), so the closure delivered
-// is b * gain with gain = a_thr * X / (speed * v_h) — measured 0.48-0.58,
-// the half the old law silently left in. Dividing the command by the gain
-// makes the closure y / tau_yaw by construction. The correction is capped
-// at 2 — its exact value when X equals the arc's own stopping distance
-// speed * v_h / (2 * a_thr), which is what X is whenever the solve has
-// converged. X below that is off the solved family (overshoot, or the
-// end-game where the channel is dead), and holding the on-family
-// correction there is the freeze the design wants, bought with no new
-// constant; the dying speed then fades the bias out on its own.
-function braking_dir {
-  local v_ is ship:velocity:surface.
-  local n is vcrs(v_, up:vector):normalized.
-  local y is vdot(tgt:position, n).
-  local v_h is vxcl(up:vector, v_):mag.
-  local a_thr is f_cmd * ship:availablethrust / ship:mass.
-  local corr is min(2, v_:mag * v_h / max(1, a_thr * aim_distance(y))).
-  return -(v_ - n * (y / tau_yaw) * corr).
-}
-lock steering to lookdirup(braking_dir(), ship:facing:topvector).
-lock throttle to f_cmd.
+lock steering to lookdirup(brake_cmd(), ship:facing:topvector).
+lock throttle to min(1, brake_cmd():mag * ship:mass
+                        / max(0.001, ship:availablethrust)).
 
-// The exit is high gate: hand off when retrograde has come within tilt_max
-// of plumb. The handoff changes nothing about the attitude — terminal keeps
-// holding retrograde — it ends the re-solving, whose control is spent, and
-// starts the coast toward the arrest burn.
-//
-// Re-solve every 5 s until within ~10 deg of high gate: that last stretch is
-// seconds long and metres-of-reach per unit of throttle have collapsed, so
-// the last solution rides to the handoff. The 10 deg is a soft cutoff on a
-// spent control, not a tuned landing number.
-//
-// t_frozen is the instant the adopted solution's state was captured — the
-// clock t_go ages against. t_solved is the instant the last solve
-// returned — the cadence clock, so every look is followed by five
-// seconds of flown, logged flight. Both start at ignition: the seed
-// already describes the ignition state, so an immediate re-solve would
-// only re-derive it, and the recorder gets the seed's first five seconds
-// as flown witness instead of a gap.
-local t_frozen is time:seconds.
-local t_solved is time:seconds.
+// The loop is witness-keeping: the locks fly the ship, the loop logs it.
+// sat_s accumulates seconds of demand above f_max — saturation duration
+// is the pre-gate observable that predicts a wall-side arrival. clear_min
+// tracks the lowest radar reading of the arc. prev_* carry the last row's
+// velocity and command for the achieved-over-commanded ratio.
 local t_logged is 0.
-local x_solved is sol["x"].
-local miss_solved is x_solved - d_aim.
-local noticed is "".
-until false {
-  local retro_ang is vang(up:vector, srfretrograde:vector).
-  if retro_ang <= tilt_max { break. }
-  if retro_ang > tilt_max + 10 and time:seconds - t_solved >= 5 {
-    // Freeze the problem at this instant, then solve it: the root must
-    // belong to one state and one distance, not to a target re-read while
-    // the ship closes on it at hundreds of m/s. The bracket rides the
-    // previous root; a seed the root has left just widens to the hard
-    // limits, priced at one march.
-    local t_cap is time:seconds.
-    set d_aim to aim_distance().
-    set sol to solve_arc(live_state(), d_aim,
-        max(0, f_cmd - f_bracket), min(f_max, f_cmd + f_bracket)).
-    if sol["case"] = "OK" or sol["case"] = "OVERSHOOT" {
-      set f_cmd to sol["f"].
-      set t_go to sol["t"].
-      set x_solved to sol["x"].
-      set miss_solved to x_solved - d_aim.
-      set t_frozen to t_cap.
-    }
-    if sol["case"] = "OK" { set noticed to "OK". }
-    if not (sol["case"] = "OK") and not (sol["case"] = noticed) {
-      local note_ is choose
-          "OVERSHOOT: flying f_max, smallest overshoot "
-              + round(sol["x"] - d_aim) + " m."
-          if sol["case"] = "OVERSHOOT" else
-          "SHORT: holding f=" + round(f_cmd, 3) + ", best reach "
-              + round(d_aim - sol["x_best"]) + " m short.".
-      print note_ + "        " at (0, 11).
-      log "# case " + sol["case"] + "  t " + round(time:seconds, 1)
-          + "  f " + round(f_cmd, 3) + "  d_aim " + round(d_aim)
-          + "  x " + round(sol["x"])
-          + (choose "  x_best " + round(sol["x_best"])
-                 if sol["case"] = "SHORT" else "") to flightlog.
-      set noticed to sol["case"].
-    }
-    set t_solved to time:seconds.
-  }
+local sat_s is 0.
+local clear_min is alt:radar.
+local prev_v is ship:velocity:surface.
+local prev_t is time:seconds.
+local prev_cmd is brake_cmd().
+until t_go <= tau_f {
+  set t_go to max(tau_f, t_total - (time:seconds - t_ign)).
+  set clear_min to min(clear_min, alt:radar).
   if time:seconds - t_logged >= 1 {
-    local n is vcrs(ship:velocity:surface, up:vector):normalized.
-    log_state("BRAKE", max(0, t_go - (time:seconds - t_frozen)),
-        f_cmd * (ship:availablethrust / ship:mass) * braking_dir():normalized,
-        vdot(tgt:position, n), d_aim).
-    // x is the solved arc's reach and miss its gap against the site, both
-    // priced at the last re-solve — a march is worth one look per solution,
-    // not one per second — while d is the live ground distance, closing
-    // between solves. Printed in place at a fixed row (trailing spaces
-    // overwrite a prior, longer line) so the readout updates rather than
-    // scrolling the screen.
-    local d is dist_to_site().
-    print "BRK f=" + round(f_cmd, 3) + " x=" + round(x_solved)
-        + " d=" + round(d) + " miss=" + round(miss_solved)
-        + " v=" + round(ship:velocity:surface:mag, 1) + "        "
-        at (0, 10).
+    local cmd is brake_cmd().
+    local dem is cmd:mag * ship:mass / max(0.001, ship:availablethrust).
+    if dem > f_max { set sat_s to sat_s + (time:seconds - t_logged). }
+    local dt_row is max(0.1, time:seconds - prev_t).
+    local a_meas is (ship:velocity:surface - prev_v) * (1 / dt_row) - g_vec().
+    local ach is a_meas:mag / max(0.001, prev_cmd:mag).
+    local up_site is (tgt:position - body:position):normalized.
+    local zem is (tgt:position + up_site * (h_gate - v_gate * tau_f) + off_p
+                  - ship:velocity:surface * t_go):mag.
+    log_state("BRAKE", t_go, zem, dem, cmd, ach,
+        vdot(tgt:position, vcrs(ship:velocity:surface, up:vector):normalized),
+        clear_min).
+    print "BRK tgo=" + round(t_go) + " dem=" + round(dem, 3)
+        + " zem=" + round(zem) + " v=" + round(ship:velocity:surface:mag, 1)
+        + " d=" + round(dist_to_site()) + "        " at (0, 10).
+    set prev_v to ship:velocity:surface.
+    set prev_t to time:seconds.
+    set prev_cmd to cmd.
     set t_logged to time:seconds.
   }
   wait 0.
 }
 
+// === HIGH GATE ===
+// Braking's exit is the clock: t_go at the floor, the ship at the real
+// gate state to the law's tracking accuracy. Two arrival checks are
+// witnessed before FALL commits — the corridor fraction (must be <= 1,
+// designed ~0.25) and the residuals the law promised — visible here with
+// the engine still lit, not at the pad.
+local a_dec_gate is f_max * ship:availablethrust / ship:mass - g0.
+local corridor is ship:velocity:surface:mag ^ 2
+    / (2 * a_dec_gate
+         * max(1, ship:altitude - tgt:terrainheight - h_pad)).
+log "# high gate  radar " + round(alt:radar)
+    + "  speed " + round(ship:velocity:surface:mag, 1)
+    + "  drift " + round(vxcl(up:vector, ship:velocity:surface):mag, 1)
+    + "  offset " + round(vxcl(up:vector, tgt:position):mag)
+    + "  corridor " + round(corridor, 2)
+    + "  sat_s " + round(sat_s, 1)
+    + "  lat " + round(ship:geoposition:lat, 4)
+    + "  lng " + round(ship:geoposition:lng, 4) to flightlog.
+
 // === TERMINAL DESCENT ===
-// The braking law continued to the ground. From high gate the ship keeps
-// holding surface retrograde: first a coast, engine off, until f_max could
-// just bring the speed to rest at the pad — the same schedule the planning
-// integration ignites on — then the arrest burn. Thrust opposite the
-// velocity takes descent rate and drift together, and gravity rotates the
-// velocity vector toward plumb as the horizontal dies, so the ship reaches
-// the last metres upright and drift-free with no lateral law. The throttle
-// holds the vertical deceleration a_req that carries the descent rate to
-// v_floor at the pad; the v/|vv| factor is the retrograde lean's cosine,
-// restoring the vertical share the lean sends sideways, and it is gated
-// with the steering — below v_switch the nose is plumb and there is no
-// lean to pay for. If the ship runs
-// behind schedule the request rises past f_max into the reserve on its own;
-// near the ground a_req falls below hover and the ship settles instead of
-// bouncing. Below v_switch the retrograde direction is mostly noise — a
-// small tolerance like pitch_tol, not a landing number — and the nose goes
-// to plumb for touchdown.
-// Blank BRAKE's row-11 case notice so a stale one does not persist into
-// the terminal readout. Printed before the scrolling print below so the
-// blank always lands on row 11, regardless of whether that print scrolls
-// the screen.
-print "                                                            " at (0, 11).
-print "TERMINAL: coasting from " + round(alt:radar) + " m.".
-local v_switch is 5.
+// The flown chain, kept whole. FALL: engine off, holding surface
+// retrograde — with drift nulled at the gate, retrograde and plumb
+// coincide to within the residual, so the nose is already on the thrust
+// direction when the arrest ignites and there is no slew to pay. The
+// arrest burn holds the vertical deceleration a_req that carries the
+// descent rate to v_floor at the pad; the v/|vv| factor is the retrograde
+// lean's cosine, restoring the vertical share the lean sends sideways,
+// gated with the steering — below v_switch the nose is plumb and there is
+// no lean to pay for. Behind schedule the request rises past f_max into
+// the reserve on its own; near the ground a_req falls below hover and the
+// ship settles instead of bouncing.
+print "FALL: from " + round(alt:radar) + " m.".
+lock throttle to 0.
 // The terminal phase's altimeter: the height of the craft's lowest point
 // above the ground. alt:radar measures from the core, which sits metres
 // above the legs' contact point, so heights against it plan the flare
@@ -496,21 +405,16 @@ local v_switch is 5.
 // when the gear deployed at ignition; the bottomaltradar suffix off the
 // stored box is the cheap per-tick read, and it tracks attitude, so
 // while the craft still leans it reads the corner that would touch
-// first. The one-time check guards an API this program has not flown: a
-// box reading above the core, or a core height beyond any lander's
-// geometry, falls back to the core radar — the flown, six-metres-wrong
-// behavior — rather than flying a nonsense number.
+// first. The one-time check guards an API this program has not flown
+// through a flare: a box reading above the core, or a core height beyond
+// any lander's geometry, falls back to the core radar — the flown,
+// six-metres-wrong behavior — rather than flying a nonsense number.
 local box is ship:bounds.
 local dh_core is alt:radar - box:bottomaltradar.
 local use_box is dh_core >= 0 and dh_core <= 20.
 if not use_box {
   print "WARN: bounds datum " + round(dh_core, 1) + " m; using core radar.".
 }
-// The capture happens up to tilt_max off plumb (high gate just passed),
-// and the box rotates with the craft, so dh_core carries an attitude
-// term of a few tenths of a metre. Logging the tilt it was read at makes
-// the number comparable with the touchdown pair, which is measured near
-// plumb.
 log "# bounds  dh_core " + round(dh_core, 2)
     + "  tilt " + round(vang(up:vector, ship:facing:vector), 1)
     + (choose "" if use_box else "  REJECTED") to flightlog.
@@ -519,15 +423,6 @@ local lock a_dec to f_max * ship:availablethrust / ship:mass - g0.
 local lock a_req to (verticalspeed ^ 2 - v_floor ^ 2)
                   / (2 * max(1, h_bot - h_pad)).
 local burning is false.
-// High gate in the witness: the drift the arrest burn inherits, the offset
-// the flight can no longer correct, and the ground position — with the
-// landed position and the target in the header, enough to split a miss
-// into along-track and cross-track afterward.
-log "# high gate  radar " + round(alt:radar)
-    + "  drift " + round(vxcl(up:vector, ship:velocity:surface):mag, 1)
-    + "  offset " + round(vxcl(up:vector, tgt:position):mag)
-    + "  lat " + round(ship:geoposition:lat, 4)
-    + "  lng " + round(ship:geoposition:lng, 4) to flightlog.
 lock steering to lookdirup(
     (choose srfretrograde:vector if ship:velocity:surface:mag > v_switch
             else up:vector),
@@ -551,23 +446,31 @@ until ship:status = "LANDED"
   // 1 s otherwise.
   local log_dt is choose 0.25 if alt:radar < 40 else 1.
   if time:seconds - t_logged >= log_dt {
-    // Log the thrust actually commanded; max(0.001, ...) keeps the vector
-    // pointing somewhere when the engine is off. The cross column carries
-    // the full horizontal drift speed — v_to_site is blind to the
-    // tangential component.
-    log_state((choose "ARREST" if burning else "COAST"), 0,
-        max(0.001, throttle * ship:availablethrust / ship:mass)
+    // The commanded vector for the row; max(0.001, ...) keeps it pointing
+    // somewhere when the engine is off. The cross column carries the full
+    // horizontal drift speed — v_to_site is blind to the tangential
+    // component. zem is spent below the gate; ach rides on the throttle
+    // request, meaningful only while burning.
+    local cmd is max(0.001, throttle * ship:availablethrust / ship:mass)
         * (choose srfretrograde:vector
-                  if ship:velocity:surface:mag > v_switch else up:vector),
-        vxcl(up:vector, ship:velocity:surface):mag,
-        vxcl(up:vector, tgt:position):mag).
+                  if ship:velocity:surface:mag > v_switch else up:vector).
+    local dt_row is max(0.1, time:seconds - prev_t).
+    local a_meas is (ship:velocity:surface - prev_v) * (1 / dt_row) - g_vec().
+    local ach is choose a_meas:mag / max(0.001, prev_cmd:mag)
+        if burning else 1.
+    set clear_min to min(clear_min, alt:radar).
+    log_state((choose "ARREST" if burning else "FALL"), 0, 0, throttle,
+        cmd, ach, vxcl(up:vector, ship:velocity:surface):mag, clear_min).
+    set prev_v to ship:velocity:surface.
+    set prev_t to time:seconds.
+    set prev_cmd to cmd.
     set t_logged to time:seconds.
   }
   if time:seconds - t_printed >= 1 {
-    // Fixed-row readout in BRK's idiom: v the descent rate, sched the total
-    // speed that ignites the arrest burn, f the throttle, miss the
-    // horizontal offset that becomes the landing error, drift the
-    // horizontal speed the burn is spending.
+    // Fixed-row readout: v the descent rate, sched the total speed that
+    // ignites the arrest burn, f the throttle, miss the horizontal offset
+    // that becomes the landing error, drift the horizontal speed the burn
+    // is spending.
     print "TRM b=" + round(h_bot) + " v=" + round(verticalspeed, 1)
         + " sched=" + round(sqrt(2 * a_dec * max(0, h_bot - h_pad)))
         + " f=" + round(throttle, 3)
@@ -623,3 +526,5 @@ log "# landed  miss " + round(miss) + " m  lat "
     + round(ship:geoposition:lat, 4) + "  lng "
     + round(ship:geoposition:lng, 4) + "  tilt " + tilt + "  dv_rem "
     + round(ship:deltav:current, 1) to flightlog.
+
+}
