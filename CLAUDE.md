@@ -24,8 +24,9 @@ framework; verification is a flight, or the bridge.
 
 ## What the flight code optimises for
 
-Δv, not timing or path shape. Precision beyond tens of metres is deliberately deferred — a
-Kerbal can walk. Terrain clearance is a design input, never something to optimise away.
+Δv, not timing or path shape. The landing accuracy bar is 10 m; precision beyond it is
+deliberately deferred — a Kerbal can walk. Terrain clearance is a design input, never
+something to optimise away.
 
 ## Working agreements
 

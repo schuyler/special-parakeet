@@ -40,7 +40,7 @@ Four measured facts, all from 2026-07-26 flights of the same craft and plan:
   seeding, case handling, a gain-corrected yaw law — all built to rescue off-plan states
   that a feedback law absorbs natively.
 
-The criteria are unchanged: Δv is the criterion, tens-of-metres accuracy is the bar,
+The criteria are unchanged: Δv is the criterion, 10 m accuracy is the bar,
 terrain clearance is a design input, entering here solely as `h_gate`.
 
 ## The worked example
@@ -92,7 +92,7 @@ speed to rest `h_pad` above the pad.
 **FALL stays inert — decided.** No powered approach phase follows braking. The Apollo
 P64 approach phase is recorded as a *designed extension point*: the same guidance law
 with a second target set, switched in at the gate, to be built only if flights measure
-gate drift beyond ~1–2 m/s or offset beyond the tens-of-metres bar. Apollo's other
+gate drift beyond ~1–2 m/s or offset beyond the 10 m bar. Apollo's other
 reasons for P64 do not apply: its trajectory was shaped so the commander could see the
 site out the window, and kOS reads state vectors with no window; it existed so a human
 could redesignate the site mid-approach, and ours is a fixed geoposition chosen before
@@ -282,13 +282,28 @@ The five pieces:
   p_virt = p_gate + v_gate·t_go_floor + ½·a₁·t_go_floor² + (1/6)·k·t_go_floor³
   ```
 
-  At `t_go_floor` = 3 s the virtual target sits 68 m of profile past the real gate — the
-  `v_gate·t_go_floor` coast term corrected by the 19.5 m `½·a₁·t_go_floor²` term and the jerk
-  term, still ~230 m above the terrain — and carries a 13.1 m/s velocity offset.
+  The floor is solved at ignition, not chosen — the smaller of two demands:
+
+  ```
+  t_go_floor = min( √(6·r_bar/a_dec) ,  ½·h_gate/v_gate )
+  ```
+
+  The first is the **law's authority**: a residual `dR` at the exit draws `6·dR/t_go²`
+  of commanded acceleration, so the floor is set where correcting a miss the size of
+  the accuracy bar `r_bar` costs exactly the spare acceleration `a_dec` the craft has
+  at gate mass. Under it the law commands authority it has not got, to chase an error
+  smaller than the requirement — the precision floor a scale-free law bangs against.
+  The second is the **gate's geometry**: the aim point descends at `v_gate` per second
+  of floor, reaching the site's terrain at `h_gate/v_gate`, and the construction
+  spends at most half of that. The cap is the wall the authority demand cannot see,
+  and it binds only in the high-thrust, low-gate corner — ~1.7 s at TWR 15 with a
+  100 m gate on the Mun. Across the swept envelope (TWR 1.5–15) the floor returns
+  1.7–11.6 s: 4.1 s for the example craft, whose aim point then sits ~205 m above the
+  terrain of its 300 m gate, and 2.4 s for the 2026-07-27 craft.
+
   Braking exits at `t_go = t_go_floor`, at which instant the ship occupies the *real* gate
   state to the law's tracking accuracy, the `1/t_go²` divergence never entered.
-  Modelled closed-loop through this construction: drift at the gate 0.08 m/s, Δv and
-  peak demand unchanged. The fallback if the virtual gate misbehaves is
+  The fallback if the virtual gate misbehaves is
   exit-on-state — leave braking when altitude, offset, and drift all sit inside gate
   bounds — simpler but a race among criteria. The escalation if flights falsify the
   drift bound is the P64 extension point, not a bigger floor.
@@ -355,9 +370,11 @@ free of both as a rule). The altitude's own argument:
   the retained arrest thrusts anti-velocity, and the fixbatch flights *measured* it
   closing 128 m of offset to 33 and 9.9 m/s of drift to 0.2. So gate drift is not a
   sentence, it is a cost: ~3–4 m of residual miss per m/s of gate drift as flown
-  (33 m from 9.9 m/s), against ~15 m per m/s if nothing corrected. The law's 1–2 m/s
-  gate-drift bound keeps the drift term in single-digit metres either way; the
-  fixbatch numbers say even a tenfold violation lands inside the bar.
+  (33 m from 9.9 m/s), against ~15 m per m/s if nothing corrected. Against a 10 m bar
+  that is not comfortable: the law's own 1–2 m/s gate-drift bound already spends 3–8 m
+  of the budget, and the fixbatch drift of 9.9 m/s lands at 33 m, three times outside
+  it. The bar leaves room for the drift term or for a second term of that size, not
+  both.
 - **Terrain enters here and only here.** `h_gate` is height above the site's terrain,
   the design's single clearance input; what the site demands adds to it directly.
   Fuel does not argue against it: the whole gate costs ~`√(2·g0·h_gate)` of arrest
@@ -468,20 +485,22 @@ reading):
   the full span: validated numerically on the `[1.6, 2.6]` interior, unswept on the
   outer margins, where the flown and modelled crossings (both within 2 % of `2·X/v₀`)
   have never been. An offline sweep across certified geometries closes it.
-- `t_go_floor`, the exit floor and virtual-gate offset, is family-of-`t_settle` and
-  underived. What it buys is the airframe tracking the law's final commanded rotation —
-  the gains rise toward exit — so its per-flight witness is the facing_err trend across
-  the last braking rows: 0.7 → 3.7° over the final five seconds flown, the command
-  outrunning the nose. Growth there is the floor-too-small signature, and the knob is
-  the floor itself: raising it buys tracking by selling terminal correction authority —
-  the law corrects residuals at `6/t_go²`, so a bigger floor hands more of the late
-  dispersion to FALL as gate offset and drift, the same currency the arrest prices at
-  ~3–4 m of miss per m/s. The frozen profile's extrapolation error grows with the floor
-  squared, and the geometric ceiling is ~`h_gate/v_gate` — the virtual gate marches
-  down the profile at `v_gate` per second of floor — ~13 s for the example craft,
-  ~17 s flown. Raised honestly it is `k · t_settle` with `t_settle` measured: the same
-  `torque/MOI` step response the plumb-slew guard below needs, one experiment feeding
-  both.
+- **Nothing owns the airframe's ability to fly the profile's final attitude.** The
+  exit floor answers to the accuracy bar and the gate's geometry, and deliberately not
+  to control authority, so the program can command a rotation the craft cannot follow —
+  the gains rise toward exit and the nose may simply not arrive. Deferred on the
+  grounds that these landers carry good attitude authority; it is a scope statement,
+  not a certificate. The per-flight witness is the facing_err trend across the last
+  braking rows — 0.7 → 3.7° over the final five seconds flown, the command outrunning
+  the nose — and growth there is the signature. What it costs is paid in the same
+  currency as everything else at the gate: late dispersion handed to FALL as offset
+  and drift, which the arrest prices at ~3–4 m of miss per m/s. If it earns an owner
+  it is the plumb-slew guard below, which needs the same angular acceleration and
+  guards a larger angle one phase later; it is not the floor's job.
+- **The 10 m bar is not met.** The design's one flight landed 15 m from the site, with
+  1.5 m/s of gate drift worth ~5 m of that. No flight has hit the bar, and the drift
+  term alone spends most of the budget (High gate placement), so meeting it is a
+  design question and not a matter of tightening what is there.
 - The FALL-entry slew is unbudgeted: the plumb-slew window (High gate placement, third
   bullet) is checked by no rule. The pieces of a guard exist without new physics: the
   swing angle is the angle between the profile's gate-end thrust direction — `a₁ − g`,

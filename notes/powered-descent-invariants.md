@@ -67,6 +67,15 @@ The flight is these five statements and nothing more.
    the offsets are frozen at the solve; the gate's position and its vertical are rebuilt
    from the live target each tick, so the aim point rides the rotating ground.
 
+   The floor is itself solved at ignition, from the accuracy bar and the gate:
+   `t_go_floor = min(√(6·r_bar/a_dec), ½·h_gate/v_gate)`. The first term is where the
+   law's correction of a residual the size of the bar — the law answers a miss `dR`
+   with `6·dR/t_go²` — costs exactly the acceleration the craft has spare at gate mass;
+   below it the law asks for authority it has not got, to fix an error smaller than the
+   requirement. The second is half the time the aim point needs to march from the gate
+   into the site, and caps a high-thrust craft at a low gate. The floor answers to
+   neither the craft's attitude authority nor a settle time (Open).
+
 4. **High gate opens the vertical corridor.** Everything below the gate is vertical, so
    feasibility below the gate is one inequality on total surface speed — the variable the
    arrest trigger actually reads — with `a_dec = f_max·T/m − g` the net arrest
@@ -156,7 +165,8 @@ with planning numbers as `#` lines. The columns that carry the invariants:
   measures the gap the design does not close.
 
 And the `#` lines: the delivery witness at warp-out (`node-delivery-window.md`), the
-ignition header, the `# high gate` arrival — radar, speed, drift, offset, corridor
+ignition header — which carries the solved `t_floor` alongside both demands that bid for
+it, so the CSV shows which one bound — the `# high gate` arrival — radar, speed, drift, offset, corridor
 fraction, `sat_s` — the `# bounds` datum with its accept/reject, `# touchdown`,
 the settle trace, and `# landed`.
 
@@ -206,14 +216,15 @@ Carried forward; each was earned by a flight.
 
 ## Open
 
-- `t_go_floor` (3 s) is family-of-settle-time and underived; the virtual gate's construction
-  bounds its consequence, not its value. What it buys is the airframe tracking the law's
-  final commanded rotation, so its witness is the facing_err trend across the last
-  braking rows (0.7 → 3.7° over the final five seconds flown); growth there is the
-  floor-too-small signature. The knob is the floor itself, and it trades: a bigger
-  floor hands more late dispersion to FALL as gate residuals, its extrapolation error
-  grows with the floor squared, and its ceiling is ~`h_gate/v_gate`
-  (`klumpp-descent-redesign.md`, Open, carries the full trade).
+- Nothing owns whether the airframe can fly the profile's final attitude. `t_go_floor`
+  answers to the accuracy bar and the gate's geometry and deliberately not to control
+  authority, so the program may command a rotation the craft cannot follow. Its witness
+  is the facing_err trend across the last braking rows (0.7 → 3.7° over the final five
+  seconds flown); growth there is the signature, and the cost is late dispersion handed
+  to FALL as gate residuals. Deferred, not certified
+  (`klumpp-descent-redesign.md`, Open).
+- The 10 m bar has not been met: the design's one flight landed 15 m out, ~5 m of it
+  bought by 1.5 m/s of gate drift.
 - The FALL-entry slew to plumb is unbudgeted: it must finish inside the `h_gate → h_lg`
   fall window (106° in 5–6 s flown against ~11 s), and no rule computes or checks it.
   The knob is `h_gate` — window at single-digit m/s per hundred metres. The guard's

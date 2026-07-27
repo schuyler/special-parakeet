@@ -22,7 +22,8 @@
 //   3. The law aims at a virtual gate: the real gate state propagated a
 //      floor time t_go_floor forward along the profile, position and velocity
 //      both, so braking exits at t_go = t_go_floor occupying the real gate
-//      state and the 1/t_go^2 divergence never enters.
+//      state and the 1/t_go^2 divergence never enters. The floor is solved
+//      from the accuracy bar and the gate's own geometry.
 //   4. High gate opens the vertical corridor: total speed small enough
 //      that an f_max burn can rest the craft above the pad. Inside it at
 //      the gate, the arrest schedule always fires above the pad.
@@ -74,6 +75,12 @@ local h_pad is 5.
 local v_floor is 2.
 local v_switch is 5.
 
+// r_bar: the landing accuracy this design is held to, metres. It is the
+// requirement, and so also the scale at which the guidance is told to
+// stop caring — a scale-free law given none will chase its own noise.
+// An accuracy bound, free of the craft and the body.
+local r_bar is 10.
+
 // The terminal chain needs a live engine with thrust at f_max above
 // weight, and a gate above the flare height — checked here, before the
 // coast, where declining costs nothing.
@@ -94,12 +101,6 @@ if h_gate <= h_pad {
   set config:ipu to ipu_prior.
   wait until false.
 }
-
-// t_go_floor: the floor t_go decrements to, and the virtual gate's
-// propagation time, seconds.
-// Family of a settle time — what a command reversal takes at steering
-// rates — and underived (register: Open).
-local t_go_floor is 3.
 
 // The t_go bracket, in units of X/v0 (ground distance over ground speed):
 // the walls of the two-ended braking class. The law's endpoint
@@ -222,6 +223,7 @@ function solve_ignition {
   local ends is profile_ends(r0, v0_, v_tgt, t_go).
   return lexicon("ok", true, "t_go", t_go, "m_gate", m_gate,
                  "v_gate", v_gate, "dip", max(pair[0], pair[1]),
+                 "a_dec", f_max * ship:availablethrust / m_gate - g0,
                  "a0", ends[0], "a1", ends[1], "x", x_lead).
 }
 
@@ -319,6 +321,34 @@ if not sol["ok"] {
 // === BRAKING ===
 local t_go_ign is sol["t_go"].
 local v_gate is sol["v_gate"].
+
+// t_go_floor: the floor t_go decrements to, and the virtual gate's
+// propagation time, seconds. Two demands answer it, and the smaller wins.
+//
+// The law's authority. A residual dR at the exit draws 6*dR/t_go^2 of
+// commanded acceleration, so the floor is the scale below which the law
+// asks for more than the craft has. Ask it to correct a miss the size of
+// the requirement using the acceleration the craft actually has spare,
+// and the floor follows: 6*r_bar/t^2 = a_dec, at the gate's own mass.
+// Under that, the law commands authority it has not got to chase an error
+// smaller than the bar — the precision floor it would bang-bang at.
+//
+// The gate's geometry. The aim point is the gate state marched down the
+// profile, and it descends at v_gate per second of floor, so it reaches
+// the site's terrain at h_gate/v_gate. The construction allows it half of
+// that. This is the wall the authority demand cannot see: a high-thrust
+// craft at a low gate solves a short floor for sound reasons and would
+// still aim through the ground without the cap. It binds at TWR ~15 with
+// a 100 m gate on the Mun, where it returns ~1.7 s.
+//
+// What the floor does not buy is the airframe tracking the law's final
+// commanded rotation. Nothing here checks that the craft can fly the
+// attitude the profile ends on; the program may command a rotation it
+// cannot follow (register: Open).
+local t_go_authority is sqrt(6 * r_bar / sol["a_dec"]).
+local t_go_ceiling is 0.5 * h_gate / v_gate.
+local t_go_floor is min(t_go_authority, t_go_ceiling).
+
 // The virtual gate's frozen pieces: the profile's gate-end acceleration
 // and its jerk, raw-frame vectors captured at the solve. The body rotates
 // under them ~0.4 deg over the burn — sub-metre on offsets this size —
@@ -359,6 +389,9 @@ log "# h_pdi " + round(ship:altitude) + "  speed_pdi "
     + round(ship:velocity:surface:mag, 1)
     + "  t_go " + round(t_go_ign, 1) + "  dip " + round(sol["dip"], 3)
     + "  v_gate " + round(v_gate, 1) + "  m_gate " + round(sol["m_gate"], 3)
+    + "  t_floor " + round(t_go_floor, 2)
+    + " of auth " + round(t_go_authority, 2)
+    + " ceil " + round(t_go_ceiling, 2)
     + "  dist " + round(sol["x"])
     + "  dv_at_pdi " + round(ship:deltav:current, 1) to flightlog.
 log "t,phase,t_go,alt,radar,v_to_site,v_vert,zem,dem,throttle,facing_err,mass,dv_rem,pitch,cmd_pitch,ach_ratio,cross,clear_min"
