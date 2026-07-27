@@ -1,8 +1,9 @@
 // powered_descent.ks — the powered descent, reduced to its invariants.
 //
-// This file assumes the plan is good: it checks feasibility once at PDI —
-// declining to ignite on a stable ellipse is the abort — and carries no
-// other envelope protection.
+// This file assumes the plan is good. Its envelope protection is refusal:
+// two guards before the coast (a live engine with thrust at f_max above
+// weight; a gate above the flare height) and two feasibility checks at
+// PDI, where declining to ignite on a stable ellipse is the abort.
 // Design and the full argument: notes/klumpp-descent-redesign.md.
 //
 // Assumes (plan_doi.ks's contract): the DOI burn is behind us, PDI is the
@@ -68,6 +69,27 @@ local g0 is body:mu / body:radius ^ 2.
 local h_pad is 5.
 local v_floor is 2.
 local v_switch is 5.
+
+// The terminal chain needs a live engine with thrust at f_max above
+// weight, and a gate above the flare height — checked here, before the
+// coast, where declining costs nothing.
+if ship:availablethrust <= 0 {
+  print "ABORT: no live engine. Stage or activate the descent engine.".
+  set config:ipu to ipu_prior.
+  wait until false.
+}
+if f_max * ship:availablethrust / ship:mass <= g0 {
+  print "ABORT: f_max thrust does not exceed weight on " + body:name
+      + " — no arrest is possible.".
+  set config:ipu to ipu_prior.
+  wait until false.
+}
+if h_gate <= h_pad {
+  print "ABORT: h_gate " + round(h_gate) + " m does not clear the flare"
+      + " height h_pad " + round(h_pad) + " m.".
+  set config:ipu to ipu_prior.
+  wait until false.
+}
 
 // tau_f: the t_go floor and the virtual gate's propagation time, seconds.
 // Family of a settle time — what a command reversal takes at steering
@@ -156,8 +178,8 @@ function solve_ignition {
     set r0 to tgt:position + up_site * h_gate.
     set v_tgt to -up_site * v_gate.
     local gap is { parameter t_.
-      local d is demand_pair(r0, v0_, v_tgt, t_, m0, m_gate, g_gate).
-      return d[0] - d[1]. }.
+      local pair is demand_pair(r0, v0_, v_tgt, t_, m0, m_gate, g_gate).
+      return pair[0] - pair[1]. }.
     // Bracket check before bisect, so its four-line failure print never
     // tears the screen: the gate-end demand dominates at short tau, the
     // ignition end at long, and a same-signed pair means the crossing —
@@ -169,18 +191,18 @@ function solve_ignition {
                      "x", x_lead).
     }
     set tau to bisect(gap, t_lo, t_hi, 0.05).
-    local d is demand_pair(r0, v0_, v_tgt, tau, m0, m_gate, g_gate).
+    local pair is demand_pair(r0, v0_, v_tgt, tau, m0, m_gate, g_gate).
     // Propellant estimate: the thrust-acceleration trapezoid over the
     // profile, endpoints priced at their own masses via the demands.
-    local dv_est is (d[0] + d[1]) / 2 * (ship:availablethrust / m0) * tau
-                  * (m0 / ((m0 + m_gate) / 2)).
+    local dv_est is (pair[0] + pair[1]) / 2 * (ship:availablethrust / m0)
+                  * tau * (m0 / ((m0 + m_gate) / 2)).
     set m_gate to m0 * constant:e ^ (-dv_est / (engine_isp() * constant:g0)).
     set pass_ to pass_ + 1.
   }
-  local d is demand_pair(r0, v0_, v_tgt, tau, m0, m_gate, g_gate).
+  local pair is demand_pair(r0, v0_, v_tgt, tau, m0, m_gate, g_gate).
   local ends is profile_ends(r0, v0_, v_tgt, tau).
   return lexicon("ok", true, "tau", tau, "m_gate", m_gate,
-                 "v_gate", v_gate, "d_dip", max(d[0], d[1]),
+                 "v_gate", v_gate, "dip", max(pair[0], pair[1]),
                  "a0", ends[0], "a1", ends[1], "x", x_lead).
 }
 
@@ -261,10 +283,10 @@ if not sol["ok"] {
   unlock steering.
   sas on.
   set config:ipu to ipu_prior.
-} else if sol["d_dip"] > f_max {
-  print "PDI INFEASIBLE: dip demand " + round(sol["d_dip"], 3) + " > f_max "
+} else if sol["dip"] > f_max {
+  print "PDI INFEASIBLE: dip demand " + round(sol["dip"], 3) + " > f_max "
       + round(f_max, 3) + ". Not igniting.".
-  log "# infeasible  d_dip " + round(sol["d_dip"], 3)
+  log "# infeasible  dip " + round(sol["dip"], 3)
       + "  f_max " + round(f_max, 3)
       + "  dist " + round(sol["x"]) to flightlog.
   unlock steering.
@@ -302,7 +324,7 @@ function brake_cmd {
 }
 
 print "BRAKE: t_go " + round(tau, 1) + " s, dip demand "
-    + round(sol["d_dip"], 3) + ", " + round(sol["x"] / 1000, 1)
+    + round(sol["dip"], 3) + ", " + round(sol["x"] / 1000, 1)
     + " km to the site.".
 // Deploy the legs now, not at terminal entry: ship:bounds must be read
 // after the craft has finished changing shape — a cached bounds goes
@@ -313,7 +335,7 @@ gear on.
 
 log "# h_pdi " + round(ship:altitude) + "  speed_pdi "
     + round(ship:velocity:surface:mag, 1)
-    + "  t_go " + round(tau, 1) + "  d_dip " + round(sol["d_dip"], 3)
+    + "  t_go " + round(tau, 1) + "  dip " + round(sol["dip"], 3)
     + "  v_gate " + round(v_gate, 1) + "  m_gate " + round(sol["m_gate"], 3)
     + "  dist " + round(sol["x"])
     + "  dv_at_pdi " + round(ship:deltav:current, 1) to flightlog.
@@ -329,7 +351,7 @@ lock throttle to min(1, brake_cmd():mag * ship:mass
 // is the pre-gate observable that predicts a wall-side arrival. clear_min
 // tracks the lowest radar reading of the arc. prev_* carry the last row's
 // velocity and command for the achieved-over-commanded ratio.
-local t_logged is 0.
+local t_logged is time:seconds.
 local sat_s is 0.
 local clear_min is alt:radar.
 local prev_v is ship:velocity:surface.
@@ -421,6 +443,7 @@ local lock a_dec to f_max * ship:availablethrust / ship:mass - g0.
 local lock a_req to (verticalspeed ^ 2 - v_floor ^ 2)
                   / (2 * max(1, h_bot - h_pad)).
 local burning is false.
+local prev_burning is false.
 lock steering to lookdirup(
     (choose srfretrograde:vector if ship:velocity:surface:mag > v_switch
             else up:vector),
@@ -448,20 +471,22 @@ until ship:status = "LANDED"
     // somewhere when the engine is off. The cross column carries the full
     // horizontal drift speed — v_to_site is blind to the tangential
     // component. zem is spent below the gate; ach rides on the throttle
-    // request, meaningful only while burning.
+    // request, meaningful only when this row and the last both burned —
+    // across the ignition row the previous command is FALL's zero.
     local cmd is max(0.001, throttle * ship:availablethrust / ship:mass)
         * (choose srfretrograde:vector
                   if ship:velocity:surface:mag > v_switch else up:vector).
     local dt_row is max(0.1, time:seconds - prev_t).
     local a_meas is (ship:velocity:surface - prev_v) * (1 / dt_row) - g_vec().
     local ach is choose a_meas:mag / max(0.001, prev_cmd:mag)
-        if burning else 1.
+        if burning and prev_burning else 1.
     set clear_min to min(clear_min, alt:radar).
     log_state((choose "ARREST" if burning else "FALL"), 0, 0, throttle,
         cmd, ach, vxcl(up:vector, ship:velocity:surface):mag, clear_min).
     set prev_v to ship:velocity:surface.
     set prev_t to time:seconds.
     set prev_cmd to cmd.
+    set prev_burning to burning.
     set t_logged to time:seconds.
   }
   if time:seconds - t_printed >= 1 {

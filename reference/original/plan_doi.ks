@@ -71,6 +71,21 @@ local f_cap is (1 - f_headroom) * f_max.
 local h_pad is 5.
 local g_surf is body:mu / body:radius ^ 2.
 
+// The descent needs thrust at f_max above weight, and a gate above the
+// flare height, before any arc can be priced. Weight is taken at the
+// ship's current mass — the heaviest the descent sees — so the test is
+// conservative by the braking burn's propellant fraction.
+if f_max * ship:availablethrust / ship:mass <= g_surf {
+  print "ABORT: f_max thrust does not exceed weight on " + body:name
+      + " — no arrest is possible.".
+  wait until false.
+}
+if h_gate <= h_pad {
+  print "ABORT: h_gate " + round(h_gate) + " m does not clear the flare"
+      + " height h_pad " + round(h_pad) + " m.".
+  wait until false.
+}
+
 // The march's accuracy bounds — locals because they are accuracy bounds,
 // not craft or body numbers. pitch_tol caps the flight-path rotation per
 // Euler step (degrees); v_frac caps the fractional speed change per step.
@@ -111,7 +126,11 @@ function v_pe_at {
 // nothing. The march ends where speed falls to v_stop (the arc's stall: past
 // it the turn equations verticalize on the spot) or at the gate altitude,
 // whichever comes first. x is the ground covered, metres; m the mass at the
-// end — the gate mass, read off the march instead of iterated.
+// end — the gate mass, read off the march instead of iterated. The march
+// flies ground-relative speed through the inertial turn equations; the
+// rotating frame's 2*omega*v and omega^2*r terms are dropped, which solves
+// the stall altitude of order 100 m high — toward terrain clearance, under
+// 1 m/s of delta-v.
 function ref_arc {
   parameter h_pdi_.
   parameter v_stop.
@@ -198,8 +217,8 @@ from { local pass_ is 0. } until pass_ >= 2 step { set pass_ to pass_ + 1. } do 
   if arc["m"] <= ship:drymass {
     set config:ipu to ipu_prior.
     print "ABORT: the braking burn does not fit the propellant — the arc"
-        + " needs " + round(ship:mass - arc["m"]) + " kg and the tanks hold "
-        + round(ship:mass - ship:drymass) + ".".
+        + " needs " + round(ship:mass - arc["m"], 3) + " t and the tanks hold "
+        + round(ship:mass - ship:drymass, 3) + " t.".
     wait until false.
   }
   set m_gate to arc["m"].
@@ -250,10 +269,20 @@ function endpoint_demand {
 function dip_at {
   parameter x_lead.
   local cross is { parameter tau.
-    local d is endpoint_demand(tau, x_lead).
-    return d["ign"] - d["gate"]. }.
-  local tau is bisect(cross, 1.6 * x_lead / v0, 2.6 * x_lead / v0, 0.1).
-  return lexicon("t_go", tau, "demand", endpoint_demand(tau, x_lead)["ign"]).
+    local pair is endpoint_demand(tau, x_lead).
+    return pair["ign"] - pair["gate"]. }.
+  local t_lo is 1.6 * x_lead / v0.
+  local t_hi is 2.6 * x_lead / v0.
+  // Same-signed gaps at the bracket ends mean the crossing — and the dip —
+  // lies outside the bracket this design certifies: no profile exists at
+  // this lead, and bisect's failure sentinel must not be read as a t_go.
+  // "ok" false carries that outcome to the caller.
+  if cross(t_lo) * cross(t_hi) > 0 {
+    return lexicon("ok", false).
+  }
+  local tau is bisect(cross, t_lo, t_hi, 0.1).
+  return lexicon("ok", true, "t_go", tau,
+                 "demand", endpoint_demand(tau, x_lead)["ign"]).
 }
 
 // The lead X: where the dip demand equals f_cap. Demand falls as lead grows
@@ -266,8 +295,13 @@ function dip_at {
 // adopts the reach: extra lead would spend margin the plan already has.
 local x_lead is arc["x"].
 local dip is dip_at(x_lead).
-if dip["demand"] > f_cap {
-  local over is { parameter x_. return dip_at(x_)["demand"] - f_cap. }.
+if not dip["ok"] or dip["demand"] > f_cap {
+  // A lead whose profile has no crossing in the certified bracket is a
+  // lead this design cannot fly, so the search treats it exactly like
+  // demand above the cap.
+  local over is { parameter x_.
+    local dip_ is dip_at(x_).
+    return choose dip_["demand"] - f_cap if dip_["ok"] else 1. }.
   local x_far is 2 * arc["x"].
   local x_ceil is constant:pi * body:radius / 2.
   until over(x_far) <= 0 or x_far > x_ceil {
@@ -283,6 +317,12 @@ if dip["demand"] > f_cap {
   }
   set x_lead to bisect(over, arc["x"], x_far, 10).
   set dip to dip_at(x_lead).
+  if not dip["ok"] {
+    set config:ipu to ipu_prior.
+    print "ABORT: the endpoint-demand crossing lies outside the certified"
+        + " t_go bracket at the solved lead " + round(x_lead) + " m.".
+    wait until false.
+  }
 }
 local lead_deg is x_lead / body:radius * constant:radtodeg.
 
@@ -403,7 +443,7 @@ report("# parking " + round(ship:orbit:periapsis) + " x "
     + round(ship:orbit:eccentricity, 4)).
 report("# gate  h_gate " + round(h_gate) + " m over terrain (alt "
     + round(alt_gate) + ")  v_gate " + round(v_gate, 1) + " m/s  a_dec "
-    + round(a_dec, 2) + " at m_gate " + round(m_gate / 1000, 3)
+    + round(a_dec, 2) + " at m_gate " + round(m_gate, 3)
     + " t  (v_gate moved " + round(abs(v_gate - v_gate_prior), 2)
     + " on the last pass)").
 report("# h_pdi " + round(h_pdi) + " m solved (node delivers "
