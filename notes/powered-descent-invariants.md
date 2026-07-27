@@ -208,10 +208,14 @@ Carried forward; each was earned by a flight.
   bounds its consequence, not its value. What it buys is the airframe tracking the law's
   final commanded rotation, so its witness is the facing_err trend across the last
   braking rows (0.7 → 3.7° over the final five seconds flown); growth there is the
-  floor-too-small signature.
+  floor-too-small signature. The knob is the floor itself, and it trades: a bigger
+  floor hands more late dispersion to FALL as gate residuals, its extrapolation error
+  grows with the floor squared, and its ceiling is ~`h_gate/v_gate`
+  (`klumpp-descent-redesign.md`, Open, carries the full trade).
 - The FALL-entry slew to plumb is unbudgeted: it must finish inside the `h_gate → h_lg`
   fall window (106° in 5–6 s flown against ~11 s), and no rule computes or checks it.
-  The guard's pieces and the steering-manager slew model are registered in
+  The knob is `h_gate` — window at single-digit m/s per hundred metres. The guard's
+  pieces and the steering-manager slew model are registered in
   `klumpp-descent-redesign.md` (Open); the FALL rows' facing_err and pitch columns
   witness it per flight.
 - `v_switch` (5 m/s) is a chosen tolerance, carried from the earlier build.

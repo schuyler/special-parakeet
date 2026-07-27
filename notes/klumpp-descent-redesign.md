@@ -465,7 +465,16 @@ reading):
   underived. What it buys is the airframe tracking the law's final commanded rotation —
   the gains rise toward exit — so its per-flight witness is the facing_err trend across
   the last braking rows: 0.7 → 3.7° over the final five seconds flown, the command
-  outrunning the nose. Growth there is the floor-too-small signature.
+  outrunning the nose. Growth there is the floor-too-small signature, and the knob is
+  the floor itself: raising it buys tracking by selling terminal correction authority —
+  the law corrects residuals at `6/t_go²`, so a bigger floor hands more of the late
+  dispersion to FALL as gate offset and drift, the same currency the arrest prices at
+  ~3–4 m of miss per m/s. The frozen profile's extrapolation error grows with the floor
+  squared, and the geometric ceiling is ~`h_gate/v_gate` — the virtual gate marches
+  down the profile at `v_gate` per second of floor — ~13 s for the example craft,
+  ~17 s flown. Raised honestly it is `k · t_settle` with `t_settle` measured: the same
+  `torque/MOI` step response the plumb-slew guard below needs, one experiment feeding
+  both.
 - The FALL-entry slew is unbudgeted: the plumb-slew window (High gate placement, third
   bullet) is checked by no rule. The pieces of a guard exist without new physics: the
   swing angle is the angle between the profile's gate-end thrust direction — `a₁ − g`,
@@ -476,7 +485,9 @@ reading):
   response measures (`steeringmanager:writecsvfiles` logs the six loops; a bridge
   attitude-step on orbit is the clean instrument). The flown swing is consistent with
   that model at 1 Hz resolution: ramp to a ~30°/s peak ≈ `2 s · torque/MOI`, then
-  106° in 5–6 s. Registered, deliberately unbuilt.
+  106° in 5–6 s. The knob for a craft that fails it is `h_gate`: a higher gate buys
+  window at ~`√(2·g0·h_gate)` of arrest speed — single-digit m/s per hundred metres.
+  Registered, deliberately unbuilt.
 - Saturation response in braking — ride it or abort to orbit — is policy, Schuyler's
   call, and a named departure from the source's abort prescription.
 - `v_switch` (5 m/s, the plumb-below speed in the arrest) is chosen, not derived.
