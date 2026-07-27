@@ -7,6 +7,17 @@ implementable variant. Same status as the sibling: implementation material, rewr
 chapter prose (chapters 11–12) later. Math is plain-text/Unicode to match the sibling;
 snippets are illustrative, not tested.*
 
+*Scope: with its sibling, this note is **normative for the guidance law** the flight code
+flies — the kinematic ladder, the two-point boundary-value solve, and the endpoint mirror
+that puts the profile's demand peak at an endpoint. `plan_doi.ks` and `powered_descent.ks`
+depart from it in three named places (`klumpp-descent-redesign.md`,
+`powered-descent-invariants.md`): `t_go` comes from minimizing the profile's peak demand
+at the endpoint-demand crossover, not from the 90 %-authority closure derived below, whose
+monotonicity assumption is false for this geometry; `t_go` is solved once at ignition and
+decrements by clock thereafter, never re-solved; and saturation is logged policy (`sat_s`)
+rather than an abort. The derivations themselves stand as written — the departures are
+choices made downstream of them, not corrections to them.*
+
 Notation throughout: `r`, `v` are current position and velocity; `r_tgt`, `v_tgt` the aim
 point's; `R = r_tgt − r`; `T = t_go`. Bold quantities are vectors handled per-axis. `τ` is
 time measured forward from *now*, so `τ = 0` is this instant and `τ = T` is arrival.

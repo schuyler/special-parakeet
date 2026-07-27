@@ -5,6 +5,17 @@ implementation guide; the prose gets rewritten to fit the narrative later. Snipp
 illustrative, not tested code — the real routines land in `lib/` when the chapters are
 drafted.*
 
+*Scope: this document is **normative for the guidance law** the flight code flies — the
+kinematic ladder, the two-point boundary-value solve, and the endpoint mirror that makes
+the profile's demand peak an endpoint quantity. `plan_doi.ks` and `powered_descent.ks`
+take it as the source and depart from it in three named places
+(`klumpp-descent-redesign.md`, `powered-descent-invariants.md`): `t_go` is chosen by
+minimizing the profile's peak demand at the endpoint-demand crossover, not by the
+90 %-authority solve, whose assumption that demand falls monotonically with `t_go` is
+false for this geometry; `t_go` is solved once at ignition and thereafter decrements by
+clock, not re-solved every ~10 s; and saturation is logged policy (`sat_s`, seconds spent
+above `f_max`) rather than an abort. Everything else here stands as written.*
+
 ## Why copy Apollo
 
 Every earlier attempt in `reference/` ran into the same wall: on an efficient, shallow
@@ -265,9 +276,12 @@ terminal_descent().                      // TERMINAL (P66)
 | Braking downrange (TWR 2) | ≈ 50 km (~14°) | ≈ 15 km (~14°) |
 | Descent budget w/ margin | ~700 m/s | ~240 m/s |
 
-(Local TWR ≥ 2 is the design floor — below ~1.5 the braking phase has no vertical
-authority left after canceling horizontal velocity, and `solve_t_go` will tell you so by
-finding no crossing.)
+(Local TWR ≥ 2 is a comfortable figure, not a floor: the shipped planner sizes placements
+across craft from local TWR ~1.5 to ~15. A craft without the vertical authority to land
+meets the thrust-against-weight guard — both programs refuse before planning or coasting
+when `f_max` thrust does not exceed weight. A marginal craft above that line whose two
+endpoint demands never cross inside `[1.6, 2.6]·X/v₀` meets the ignition bracket abort:
+the program says so, and it does not ignite.)
 
 ## Test ladder
 

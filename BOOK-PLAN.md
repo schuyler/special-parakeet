@@ -312,9 +312,9 @@ speculation, not planning.
 
 - **Descent** — `reference/original/plan_doi.ks` places the DOI node;
   `reference/original/powered_descent.ks` flies the braking arc and terminal down from it.
-  Design registers: `notes/doi-planner.md` (the planner), `notes/powered-descent-invariants.md`
-  (the flight controller), `notes/powered-descent-handoff-contract.md` (the braking→terminal
-  seam, and the constants with what argues each). `notes/terrain-certification.md` holds the
+  Design registers: `notes/doi-planner.md` (the planner) and
+  `notes/powered-descent-invariants.md` (the flight controller, and the constants with
+  what argues each). `notes/terrain-certification.md` holds the
   terrain analysis the planner currently defers to the pilot, and names where it would
   attach. `notes/apollo-powered-descent.md` and `notes/klumpp-guidance-derivation.md` stay
   working material until Part IV drafting reaches them; `notes/kos-facts.md` is the verified

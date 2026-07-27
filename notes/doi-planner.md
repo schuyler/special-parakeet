@@ -2,10 +2,10 @@
 
 *The design register for `reference/original/plan_doi.ks`: one node that drops a parking
 orbit onto a descent ellipse whose periapsis is PDI, over the landing site.
-Companions: `powered-descent-invariants.md` (the flight controller this plans for),
-`powered-descent-handoff-contract.md` (the braking→terminal seam),
+Companions: `powered-descent-invariants.md` (the flight program this plans for),
+`klumpp-descent-redesign.md` (the design and its full argument),
 `terrain-certification.md` (the terrain analysis this planner defers, and where it would
-attach).*
+attach), `node-delivery-window.md` (what the burn does with the node).*
 
 ## Why the placement is a loop
 
@@ -32,7 +32,9 @@ A pass removes about nine tenths of its miss. It is not more because sliding the
 also slides it to a different true anomaly, changing how far past the antipode
 periapsis falls — roughly a tenth of a degree per degree, near this burn point. So the
 miss decays about a decimal digit a pass (15.7 degrees, 1.9, 0.18, 0.015) and flattens
-near a thousandth of a degree by the sixth, which is where `passes` sits.
+near a thousandth of a degree from the sixth. `passes` is 8 — the extra two are free
+against everything else the planner does, and they keep the flattening measured rather
+than assumed.
 
 The alternative was solving the non-apsidal Δv exactly, which is available in closed
 form: for a tangential impulse, `e_new = A·e_old + (A−1)·r̂` with `A = (1 − Δv/v)²`. It
@@ -42,8 +44,13 @@ half of the loop, and the altitude half already converges in one pass. It is the
 to build if the planner ever has to run without a live node — for a vessel that is not
 the active one, or with no game state to touch at all.
 
-`pdi_height` is still a dial. The planner marches the braking arc once, prices it, and
-places one node.
+The placement refuses rather than hand over something unflyable. A maneuver node already
+pending is not the planner's to reason about, or to delete. No live engine means no arc to
+size. A burn longitude with no crossing ahead is a search that never started. A plan whose
+corrections walked the burn into the past has nothing to fly. And a node closer than half
+its own burn plus a minute of orientation time will burn late, which silently moves
+periapsis east — aborting on it is self-correcting, since by the re-run that crossing has
+passed and the next is most of an orbit out.
 
 ## The fuel lever is the PDI altitude, not the throttle
 
@@ -61,55 +68,102 @@ arrest, and those prices differ by a few percent. The term that moves the budget
 
 So the planner owns the fuel, and it owns it through one number: how high PDI sits.
 
-## The chord certificate
+## The PDI altitude is a solve
 
-The pilot certifies terrain by eye on the map. What makes that tractable is that a
-*straight line* suffices for the braking arc: the chord from the handoff point `(0,
-h_handoff)` to PDI `(X, h_pdi)`, with x measured along the ground from the site, lies
-under every braking arc the flight controller can fly from that PDI. Clear the chord and
-the arc is clear — geometrically, with no sampling of the trajectory.
+The instrument is the **reference arc**: the constant-throttle gravity turn at `f_cap`,
+marched forward by Euler steps from the periapsis a candidate `h_pdi` implies. Pitch zero,
+because a periapsis is horizontal; speed from vis-viva with apoapsis at the parking
+orbit's semi-major-axis radius, less the ground's eastward motion, because the arc is
+flown against the ground; mass the ship's own, because the coast burns nothing. The march
+ends where speed falls to the gate speed — the arc's stall, past which the turn equations
+verticalize on the spot — or at the gate altitude, whichever comes first. It returns the
+ground it covered and the mass left at the end, so the gate mass is read off the march
+rather than iterated for its own sake.
 
-The obvious argument for this is wrong, and the repair matters. "The arc leaves PDI level
-and steepens monotonically, so `h(x)` is concave" is false at the start: at PDI the ship
-is slightly super-circular (172.2 m/s against a circular 168 at that radius), so the turn
-rate `v/r − g/v` is positive and the path pitches *up* — the flown log shows the first
-~15 s climbing. The certificate runs in two spans instead:
+`h_pdi` is then the altitude whose reference arc stalls to the gate speed *exactly at the
+gate altitude*, bisected on `stall altitude − gate altitude`. That difference changes sign
+once: an arc from too low reaches the gate altitude still fast, one from too high stalls
+above it.
 
-- **At or above `h_pdi`.** From ignition the path rises, peaks, and descends back through
-  `h_pdi`. Throughout, `h ≥ h_pdi`, and the chord's greatest height is `h_pdi` at its PDI
-  end, so the path clears it trivially.
-- **Below `h_pdi`.** By the time the path re-crosses `h_pdi` it is descending and
-  sub-circular, and sub-circularity is preserved for the rest of the descent: `v` falls
-  under braking while the bound `sqrt(mu/r)` rises as `r` falls, and even a zero-throttle
-  segment gains only `2·g·Δh` of `v²` against a bound thirty times larger at braking
-  speeds. Sub-circular, the turn rate is negative at every throttle — it contains no
-  throttle term — so pitch decreases monotonically, `h(x)` is concave, and the path lies
-  above the straight segment joining its `h_pdi` re-crossing to its endpoint. Both ends of
-  that segment sit on or above the chord, and the chord is a line, so the segment clears
-  it and the path above it does too.
+Three things about the solve are derived rather than chosen, and that is the point of it:
 
-The one non-geometric premise is the endpoint. The planner's nominal arc ends at the
-chord's own anchor by construction; flown arcs end earlier and *higher*, because the
-flight controller hands off at high gate with its stopping distance still in hand —
-flight 7 reached the seam at 627 m radar where the chord stood at ~140 m. A seam arriving
-*at* the chord is a marginal handoff the flight already warns about. Below high gate the
-attitude law does not change — terminal holds the same retrograde hold braking flew — so
-the descent stays inside a near-vertical cone over the site for the rest of the way down,
-and the site's own terrain, not the chord, is what certifies that stretch.
+- **The bracket** runs from `alt_gate + 1` — an arc from just over the gate falls into the
+  gate still fast — to `ship:orbit:periapsis`, the ellipse family's own ceiling, since
+  above it there is no descent ellipse to place. Both signs are checked before bisecting,
+  so a bracket failure aborts in the planner's own words instead of inside a root-finder.
+- **The tolerance scales itself.** The solve stops when the bracket is narrower than
+  `v_frac` times the midpoint's height above the gate. The march carries roughly `v_frac`
+  of relative error, so a tighter root would be precision the function does not have —
+  metres when the root sits close over the gate, hundreds of metres when it sits high. No
+  absolute tolerance appears anywhere.
+- **The gate mass converges in two passes.** The gate speed depends on the gate mass
+  through `a_dec`, and the gate mass comes off the march, so the solve runs twice: a
+  vis-viva estimate of the burn's propellant seeds `v_gate`, and the second pass reads the
+  mass off the first pass's arc. Each pass shrinks the mass error by roughly the
+  propellant fraction. The residual `v_gate` change across the second pass is the loop's
+  convergence witness and is printed in the verdict — 0.02 m/s on the 2026-07-27 plan.
 
-The certificate covers the braking arc only. Up-range of PDI it says nothing useful — see
-`terrain-certification.md`, which is also where the certificate would become machinery
-rather than a pilot's straightedge.
+The planner refuses before it plans: a pending node it will not touch; no live engine;
+thrust at `f_max` at or below weight, taken at the ship's current mass — the heaviest the
+descent sees; a gate at or below the flare height. Past those, five failures abort before
+any node is placed: no periapsis in the bracket puts the `f_cap` arc's stall at the gate
+(raise `h_gate`, add thrust, or lower `f_headroom`); the march hit its step cap with the
+arc unfinished, which is a bug witness and not a placement problem; the arc's propellant
+does not fit the tanks, reported in tonnes against what the tanks hold; the lead search
+reaches a quarter of the body's circumference with the demand still above `f_cap`; the
+solved lead's profile has no demand crossing inside the certified `t_go` bracket.
+
+What the solve does not rule is the ground under the arc. `h_gate` above the site's
+terrain is the one clearance input the planner carries; `terrain-certification.md` holds
+the rest.
+
+## The lead comes from the law, not from the arc
+
+The reference arc's reach is the *gravity turn's* reach, and the flight does not fly a
+gravity turn — it flies E-guidance, a different curve. So the lead X is sized from the law
+the flight actually flies: X is where that law's cheapest profile demands exactly `f_cap`,
+which reserves the whole `f_cap`..`f_max` band for what happens after ignition.
+
+The profile's demand is closed form. Commanded acceleration is linear in time, so the
+demand peaks at an endpoint; the two endpoint demands cross once on the bracket
+`[1.6, 2.6]·X/v₀`, and that crossover is the dip — the least peak demand any `t_go` buys
+at this lead. Each endpoint is priced at its own mass and its own local gravity. The form
+is exact under constant gravity and approximate here only through the ~11 degrees the arc
+subtends; modelled, it under-reads the closed-loop peak by about 0.015 of throttle, inside
+the reserve.
+
+Demand falls as the lead grows — more ground, a gentler profile — so the placement
+bisects `dip demand − f_cap` between the reference arc's own reach, where the dip sits
+above `f_cap`, and a far end found by *doubling* the reach until the demand drops under
+it. The search grows in the craft's own units, because the reach is the craft's own length
+scale. The ceiling is geometric: a lead past a quarter of the body's circumference is no
+longer an approach, and reaching it aborts. A lead whose profile has no demand crossing
+inside the certified `t_go` bracket is read as demand above the cap. A dip already at or
+under `f_cap` at the arc's reach adopts the reach, since extra lead would spend margin the
+plan already has.
+
+Worked, from `doi_plan_20260727_klumpp.log`: reach 16,373 m at `f_cap` 0.765, lead
+18,128 m, dip 0.765 at `t_go` 62 s. The flight ignited 18,042 m out and chose `t_go`
+62.9 s.
 
 ## `f_headroom`
 
-The share of the throttle ceiling the plan may not spend. PDI is placed at the reach of a
-brake at `(1 − f_headroom)·f_max` rather than at `f_max`, so the extra ground that lower
-throttle covers is the flight controller's reserve for shortening the arc. Self-scaled to
-the craft's thrust and the body's gravity instead of a fixed distance factor.
-Dimensionless, 0.1, provisional until a flight falsifies it.
+The share of the throttle ceiling the plan leaves unspent. The nominal guidance demand is
+placed at `f_cap = (1 − f_headroom)·f_max`, and the band above it is **command margin for
+the feedback law** — what guidance holds for dispersion arriving after ignition: model
+error, steering lag, the decrementing clock. It is not reserve for shortening an arc, and
+it does not cover delivery error: the ignition `t_go` choice is made from the delivered
+state, so delivery error and the delivered flight-path angle are absorbed into the
+schedule instead of being booked here. Self-scaled to the craft's thrust and the body's
+gravity instead of a fixed distance factor. Dimensionless, 0.1, provisional until a flight
+falsifies it.
 
 ## Open
 
-- `pdi_height` is a dial, so nothing prices whether it is the *right* altitude. Making it
-  a solve is `terrain-certification.md`'s subject.
+- Braking-arc terrain clearance is unruled: the chord certificate covered gravity-turn
+  arcs and the flight does not fly one. `terrain-certification.md` holds the replacement
+  and the reason it is deliberately unbuilt; the flight logs a running minimum-clearance
+  witness in the meantime, which on 2026-07-27 bottomed at 223 m.
+- Scope, standing: vacuum only, and prograde near-equatorial orbits. The ground-motion
+  term in the periapsis-speed function and the lead's layout in longitude are both
+  equatorial. Lifting either is designed separately.

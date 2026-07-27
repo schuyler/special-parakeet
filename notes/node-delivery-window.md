@@ -1,13 +1,16 @@
 # The node delivery window: what three identical plans measured
 
-*A findings register for DOI node execution, 2026-07-26. The planner's placement is
-exonerated; its delivery is not. Witnesses: `doi_plan_20260726_baseline.log`,
-`doi_plan_20260726_fixbatch.log`, `doi_plan.log` (three runs of `plan_doi.ks`), and the
-flight CSV headers of `flight_log_20260726_klumpp_terminal.csv`,
-`flight_log_20260726_fixbatch_1.csv`, and `flight_log.csv` (the 2026-07-26 crash flight).
-Companions: `doi-planner.md` (the planner), `retrograde-terminal-findings.md` (the crash
-this window caused), `klumpp-descent-redesign.md` (the design that takes this window as
-an input).*
+*A findings register for DOI node execution. The planner's placement is exonerated; its
+delivery is not. Witnesses: `doi_plan_20260726_baseline.log`,
+`doi_plan_20260726_fixbatch.log` and `doi_plan_20260727_klumpp.log` (runs of
+`plan_doi.ks`), and the flight CSV headers of
+`flight_log_20260726_klumpp_terminal.csv`, `flight_log_20260726_fixbatch_1.csv` and
+`flight_log_20260727_klumpp.csv`. **The crash flight's own witnesses are gone** — its CSV
+and plan log were the undated `flight_log.csv` and `doi_plan.log`, later runs overwrote
+them, and neither was ever in git; its row below is what was read off them while they
+existed. Companions: `doi-planner.md` (the planner),
+`retrograde-terminal-findings.md` (the flights), `klumpp-descent-redesign.md` (the design
+that takes this window as an input).*
 
 ## The measurement
 
@@ -31,6 +34,16 @@ What each flight measured at ignition, from its CSV header:
 The signature: periapsis *altitude* delivered within 10–26 m of plan and speed within
 0.1 m/s, every time, while along-track *position* scattered across 1.4 km. The orbit
 shape arrives right; the apsis line does not point where it was planned to.
+
+A fourth delivery, on a different craft and site (2026-07-27, an 11 m/s node at eta 300 s
+against a planned lead of 18,128 m): h_pdi 4011 m delivered against 4004 m planned, speed
+568.3, **18,042 m at ignition — 86 m short**. The pe-longitude witness reads it
+independently: −88.828° delivered against the plan's −88.870°, 0.042° east, ~147 m of
+ground track at the Mun's radius. The two measures disagree by the cross-range and
+latitude terms the great-circle `dist` carries and the longitude difference does not;
+both say the same thing, that this delivery was an order of magnitude tighter than the
+2026-07-26 spread. One sample on one craft does not move the ±1.5 km bound, but it is the
+first delivery measured by the witness rather than inferred from a distance column.
 
 ## Attribution — models consistent with the data, none yet a measurement
 
@@ -80,21 +93,32 @@ low-side feasibility clause. A feedback law with command margin absorbs the same
 by bending the trajectory early, for single-digit m/s; `klumpp-descent-redesign.md`
 carries that accounting.
 
+## The witness
+
+`powered_descent.ks` logs one line at warp-out, before anything ignites: the body-fixed
+longitude periapsis will arrive at, the site's longitude, and the lead between them. Given
+the planner's wanted longitude as its `plan_pe_lng` parameter it also logs `want` and the
+signed error; the parameter defaults to 999, which means not supplied and logs the
+delivered longitude alone. Every descent is therefore a measurement of this window,
+whatever the architecture below it.
+
+Two gaps in the instrument as it stands. The runner scripts do not pass `plan_pe_lng`, so
+the `err` term is computed by hand against the plan log rather than logged. And the plan
+log is `doi_plan.log`, undated: archive it beside the CSV or the comparison has nothing to
+run against — which is exactly how the crash flight's measurement was lost.
+
 ## Open
 
-- **The witness is missing.** Nothing logs delivery. One line in `powered_descent.ks` at
-  warp-out — the achieved ellipse's periapsis body-fixed longitude at PDI arrival time
-  against the plan's `want`, plus the delivered pe altitude the header already carries —
-  makes every future flight a measurement of this window, whatever the architecture.
-  `pe_err` at planning time (~0.001°) is already witnessed; this is the *flown* twin.
 - **The taper-pointing mechanism is the leading candidate and is untested.** The
   witness line measures its net effect; if the executor is ever instrumented directly,
   the pointing history of the last 5 m/s is the record to keep.
-- **A gentler executor is a testable hypothesis.** Capping the executor's throttle so
-  the burn takes ~20 s shrinks every mechanism: the taper becomes a small fraction of
-  the burn, the centroid error shrinks with it, and pointing slop averages down over a
-  longer arc. Signature if flown: the pe-longitude witness across three deliveries
-  lands within ±0.1° (~350 m) instead of the current spread. Until the witness line
-  exists, this cannot be falsified and should not be built.
-- The three-flight sample is small; the ±1.5 km figure is a bound argued from mechanism
-  sizes, not a distribution. The witness line turns every flight into a sample.
+- **A gentler executor is a testable hypothesis, and it is now unblocked.** Capping the
+  executor's throttle so the burn takes ~20 s shrinks every mechanism: the taper becomes
+  a small fraction of the burn, the centroid error shrinks with it, and pointing slop
+  averages down over a longer arc. Signature if flown: the pe-longitude witness across
+  three deliveries lands within ±0.1° (~350 m) instead of the current spread. The witness
+  exists and has data, so the hypothesis can be falsified; it is the live item on the
+  design's staged rollout (`klumpp-descent-redesign.md`).
+- The sample is small and now spans two craft; the ±1.5 km figure is a bound argued from
+  mechanism sizes, not a distribution. The witness line turns every flight into a sample,
+  but only the flights whose plan logs are archived can be read as one.
