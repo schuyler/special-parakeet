@@ -50,7 +50,11 @@ size. A burn longitude with no crossing ahead is a search that never started. A 
 corrections walked the burn into the past has nothing to fly. And a node closer than half
 its own burn plus a minute of orientation time will burn late, which silently moves
 periapsis east — aborting on it is self-correcting, since by the re-run that crossing has
-passed and the next is most of an orbit out.
+passed and the next is most of an orbit out. The minute's grounding is the flown slew:
+`facing_err` closed 20.1, 10.7, 1.7 degrees over the first three BRAKE rows of
+`flight_log_20260727_klumpp.csv`, one second apart — the 20.1 already a one-second
+residual, so the full-slew rate is unwitnessed — and a minute covers a full reversal
+about three times at that closing rate.
 
 ## The fuel lever is the PDI altitude, not the throttle
 
@@ -85,7 +89,7 @@ gate altitude*, bisected on `stall altitude − gate altitude`. That difference 
 once: an arc from too low reaches the gate altitude still fast, one from too high stalls
 above it.
 
-Three things about the solve are derived rather than chosen, and that is the point of it:
+Four things about the solve are derived rather than chosen, and that is the point of it:
 
 - **The bracket** runs from `alt_gate + 1` — an arc from just over the gate falls into the
   gate still fast — to `ship:orbit:periapsis`, the ellipse family's own ceiling, since
@@ -94,8 +98,19 @@ Three things about the solve are derived rather than chosen, and that is the poi
 - **The tolerance scales itself.** The solve stops when the bracket is narrower than
   `v_frac` times the midpoint's height above the gate. The march carries roughly `v_frac`
   of relative error, so a tighter root would be precision the function does not have —
-  metres when the root sits close over the gate, hundreds of metres when it sits high. No
-  absolute tolerance appears anywhere.
+  metres when the root sits close over the gate, hundreds of metres when it sits high. The
+  same `v_frac` also sets the lead bisect's tolerance and the dip solve's `t_go`
+  tolerance. No absolute tolerance appears among the solver tolerances — the bracket's
+  own floor, `alt_gate + 1` above, is the one absolute metre among them.
+- **The step cap is a scale with measured headroom.** Each Euler step retires at most one
+  quantum of its binding constraint, so `ln(v0/v_gate)/v_frac + 90/pitch_tol` counts the
+  steps a march would take if every step retired a full quantum, and the cap is four
+  times that. The headroom is measured offline, not flown: a re-march of the 2026-07-27
+  plan takes 110 steps against a 184-step budget, and a sweep across TWR at `f_max`
+  0.98–6.2 and `h_pdi` 3.5–19.3 km runs 7–112 against budgets near 184, low-TWR arcs
+  exiting early on the gate altitude rather than crawling. The verdict's `steps n of cap
+  m` line witnesses each live plan. Hitting the cap aborts as a bug witness, not a
+  placement problem.
 - **The gate mass converges in two passes.** The gate speed depends on the gate mass
   through `a_dec`, and the gate mass comes off the march, so the solve runs twice: a
   vis-viva estimate of the burn's propellant seeds `v_gate`, and the second pass reads the
@@ -157,6 +172,12 @@ state, so delivery error and the delivered flight-path angle are absorbed into t
 schedule instead of being booked here. Self-scaled to the craft's thrust and the body's
 gravity instead of a fixed distance factor. Dimensionless, 0.1, provisional until a flight
 falsifies it.
+
+The 2026-07-27 demand trace peaked at 0.761 against the flight's own solved dip of 0.733
+and the planned `f_cap` 0.765 — 0.028 of post-ignition excursion, 0.004 of margin to the
+cap. The reserve went unentered because delivery came in easier than planned, not because
+the excursion was small: the same 0.028 from a dip at `f_cap` would have reached ~0.793, a
+third of the way in. Still provisional; one flight, one craft.
 
 ## Open
 

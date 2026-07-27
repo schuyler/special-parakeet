@@ -42,12 +42,12 @@ parameter target_lat is 0.
 parameter target_lng is 0.
 // h_gate: high gate's height above the site's terrain — the design's one
 // terrain-clearance input. Must equal the h_gate plan_doi placed the node
-// with, or the corridor flown is not the one planned. Sized to contain the
-// arrest with a factor k_gate ~ 2 in hand: low gate falls near h_gate/2
-// (the corridor's mid-target entered at v_gate makes h_lg = h_pad +
-// (v_gate^2 + 2*g0*(h_gate - h_pad)) / (2*(a_dec + g0)) ~ h_gate/2), so
-// the schedule fires with as much altitude below it as the burn needs.
-// Craft- and body-free as a ratio.
+// with, or the corridor flown is not the one planned. Low gate falls at
+// h_lg = h_pad + (v_gate^2 + 2*g0*(h_gate - h_pad)) / (2*(a_dec + g0)),
+// and it sits above the pad if and only if the corridor held at the gate.
+// Entered mid-corridor at v_gate = wall/2, h_lg sits well below h_gate —
+// flown ratios h_gate/h_lg of 2.2 (283 m gate) and 2.7 (1500 m gate); the
+// ratio carries g0/a_dec and belongs to the craft, not the design.
 parameter h_gate is 300.
 parameter f_max is 0.85.
 parameter plan_pe_lng is 999.  // planner's wanted periapsis longitude, deg;
@@ -61,10 +61,14 @@ local ipu_prior is config:ipu.
 // arithmetic. At 2000 the solve fits in a tenth of a second.
 set config:ipu to 2000.
 
-// Descent geometry. g0 is surface gravity; h_pad the flare height; v_floor
-// the touchdown descent rate; v_switch the speed below which the surface
-// retrograde direction is mostly noise and the nose goes to plumb — a
-// small tolerance, not a landing number.
+// Descent geometry. g0 is surface gravity. h_pad is the height above
+// ground the flare aims v_floor at — a chosen safety margin, not a
+// derived quantity. v_floor is the touchdown descent rate the legs must
+// survive: walking pace, well under stock landing-leg tolerances; no
+// impact tolerance appears in the Part structure's suffix list to derive
+// it from. v_switch is the speed below which the surface retrograde
+// direction is mostly noise and the nose goes to plumb — a small
+// tolerance, not a landing number.
 local g0 is body:mu / body:radius ^ 2.
 local h_pad is 5.
 local v_floor is 2.
@@ -103,6 +107,16 @@ local tau_f is 3.
 // the bracket is load-bearing (register: Open).
 local tau_lo_frac is 1.6.
 local tau_hi_frac is 2.6.
+
+// dem_frac: how finely the ignition solve resolves t_go, as a
+// fraction of the profile's own timescale X/v0 — a resolution
+// bound, family of the planner's v_frac. Finer is precision the
+// demand model does not have: the closed form is exact under
+// constant gravity and errs through what varies across the arc —
+// ~0.015 of throttle over the ~11 degrees this class of arc
+// subtends (modelled; one craft, one site, and the error grows
+// with the angle).
+local dem_frac is 0.02.
 
 // Gravity as a vector at the ship: body:position points from ship to the
 // body's center, so this is the downward pull, live each read.
@@ -190,7 +204,7 @@ function solve_ignition {
       return lexicon("ok", false, "gap_lo", gap_lo, "gap_hi", gap_hi,
                      "x", x_lead).
     }
-    set tau to bisect(gap, t_lo, t_hi, 0.05).
+    set tau to bisect(gap, t_lo, t_hi, dem_frac * x_lead / v0_:mag).
     local pair is demand_pair(r0, v0_, v_tgt, tau, m0, m_gate, g_gate).
     // Propellant estimate: the thrust-acceleration trapezoid over the
     // profile, endpoints priced at their own masses via the demands.
@@ -241,6 +255,9 @@ function log_state {
 
 // === COAST TO PDI ===
 print "Coasting to PDI: " + round(eta:periapsis) + " s.".
+// The same minute of orientation time as plan_doi's node-eta guard: warp
+// exits with a minute of eta left so the ship can swing onto retrograde
+// before PDI.
 warpto(time:seconds + eta:periapsis - 60).
 wait until eta:periapsis <= 60.
 sas off.                   // kOS warns at run time that SAS fights lock steering
@@ -426,12 +443,15 @@ lock throttle to 0.
 // when the gear deployed at ignition; the bottomaltradar suffix off the
 // stored box is the cheap per-tick read, and it tracks attitude, so
 // while the craft still leans it reads the corner that would touch
-// first. The one-time check: a box reading above the core, or a core
-// height beyond any lander's geometry, falls back to the core radar
-// rather than flying a nonsense number.
+// first. The one-time check: the core cannot sit farther above the
+// craft's lowest point than the craft's own bounding box is long —
+// box:size is the ray from RELMIN to RELMAX, its magnitude the box's
+// diagonal, frame-independent. A dh_core outside [0, that diagonal] is a
+// bad read, not a tall lander, and falls back to the core radar rather
+// than flying a nonsense number.
 local box is ship:bounds.
 local dh_core is alt:radar - box:bottomaltradar.
-local use_box is dh_core >= 0 and dh_core <= 20.
+local use_box is dh_core >= 0 and dh_core <= box:size:mag.
 if not use_box {
   print "WARN: bounds datum " + round(dh_core, 1) + " m; using core radar.".
 }
@@ -463,9 +483,9 @@ until ship:status = "LANDED"
     set burning to true.
     print "ARREST: from " + round(h_bot) + " m.".
   }
-  // log_dt: seconds between CSV rows — 0.25 under 40 m radar altitude,
+  // log_dt: seconds between CSV rows — 0.25 through the arrest burn,
   // 1 s otherwise.
-  local log_dt is choose 0.25 if alt:radar < 40 else 1.
+  local log_dt is choose 0.25 if burning else 1.
   if time:seconds - t_logged >= log_dt {
     // The commanded vector for the row; max(0.001, ...) keeps it pointing
     // somewhere when the engine is off. The cross column carries the full

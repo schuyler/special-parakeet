@@ -331,8 +331,10 @@ free of both as a rule). The altitude's own argument:
   *not* a constant: it carries `g0/a_dec`, so the 2026-07-27 craft's 1500 m gate predicts
   low gate at ~551 m — ratio 2.7 — and its arrest fired between the 536 m and 436 m radar
   rows, the row cadence being 100 m of fall at that speed. Two anchors, two ratios, one
-  formula that fits both: `k_gate ≈ 2` is the example's number, not the design's. A flight
-  whose arrest peaks over `f_max` falsifies the formula.
+  formula that fits both: `k_gate ≈ 2` is the example's number, not the design's. What
+  falsifies `h_lg` is a flight whose arrest peaks at the throttle ceiling — 1.0, the
+  engine's own limit — or reaches the pad still above `v_floor`; the band above `f_max` is
+  the arrest's reserve, and flights are expected to enter it under planning slop.
 - **Bound what drift costs.** "No horizontal channel below the gate" would be false:
   the retained arrest thrusts anti-velocity, and the fixbatch flights *measured* it
   closing 128 m of offset to 33 and 9.9 m/s of drift to 0.2. So gate drift is not a
@@ -378,7 +380,9 @@ is visible *here*, with the engine still lit, not at the pad.
 
 **FALL and arrest.** The corridor proof is the certificate: inside it at the gate, low
 gate always fires above the pad, and the arrest's 0.85 ceiling leaves reserve that
-covers ignition lag and discretization. The flown set: the arrest chain landed 33 m and
+covers ignition lag and discretization — flown: arrest peaks 0.840, 0.842 and 0.858
+across the three landings, the last entering the band by 0.008, about five percent of
+the 0.15 reserve. The flown set: the arrest chain landed 33 m and
 34 m under retrograde braking and 15 m under this law; the bounds altimeter has flown a
 flare and its guard accepted the datum; the fixbatch tip-over is *not fully explained* by
 the radar-datum error — slope and leg geometry are entangled in it — and it has not

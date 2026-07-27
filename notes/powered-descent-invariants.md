@@ -126,8 +126,8 @@ decrementing clock accumulates.
 
 ## What the witnesses are
 
-`flight_log.csv`, one row a second through braking, four a second under 40 m of radar
-altitude, with planning numbers as `#` lines. The columns that carry the invariants:
+`flight_log.csv`, one row a second through braking, four a second through the arrest burn,
+with planning numbers as `#` lines. The columns that carry the invariants:
 
 - **`t_go`** — the guidance clock. It runs down to `τ_f` and nowhere else; a `t_go` that
   disagrees with the planner's reference by more than ~10 s at ignition is the placement

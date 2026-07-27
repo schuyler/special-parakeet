@@ -143,7 +143,17 @@ function ref_arc {
   local theta is 0.        // ground angle swept, radians
   local steps is 0.
   local thrust is f * ship:availablethrust.
-  until speed <= v_stop or h <= alt_gate or steps >= 6000 {
+
+  // step_cap: a scale for the march's length, not a bound on it. Each Euler
+  // step retires at most one quantum of the binding constraint — v_frac of
+  // speed, pitch_tol of turn — so ln(speed/v_stop)/v_frac + 90/pitch_tol is
+  // the step count if every step retired a full quantum, and the factor 4
+  // is headroom over that scale (measured; doi-planner.md). Hitting the
+  // cap is a bug witness, and the verdict logs steps against cap.
+  // max(1, ...) keeps the ln argument nonnegative if a future caller
+  // hands a start already at or below v_stop.
+  local step_cap is 4 * (ln(max(1, speed / v_stop)) / v_frac + 90 / pitch_tol).
+  until speed <= v_stop or h <= alt_gate or steps >= step_cap {
     local r_ is body:radius + h.
     local g is body:mu / r_ ^ 2.
     local a_thr is thrust / m.
@@ -160,7 +170,7 @@ function ref_arc {
     set steps to steps + 1.
   }
   return lexicon("h", h, "speed", speed, "pitch", pitch, "m", m,
-                 "x", theta * body:radius, "steps", steps).
+                 "x", theta * body:radius, "steps", steps, "cap", step_cap).
 }
 
 // === THE PDI ALTITUDE ===
@@ -208,7 +218,7 @@ from { local pass_ is 0. } until pass_ >= 2 step { set pass_ to pass_ + 1. } do 
   }
   set h_pdi to (lo + hi) / 2.
   set arc to ref_arc(h_pdi, v_gate, f_cap).
-  if arc["steps"] >= 6000 {
+  if arc["steps"] >= arc["cap"] {
     set config:ipu to ipu_prior.
     print "ABORT: the reference march hit its step cap with the arc"
         + " unfinished — a bug witness, not a placement problem.".
@@ -280,7 +290,11 @@ function dip_at {
   if cross(t_lo) * cross(t_hi) > 0 {
     return lexicon("ok", false).
   }
-  local tau is bisect(cross, t_lo, t_hi, 0.1).
+  // The tolerance: v_frac of the profile's own timescale x_lead/v0 (the
+  // bracket spans 1.6 to 2.6 of it). The flight re-solves t_go from the
+  // delivered state at ignition, so this dip's t_go is a cross-check
+  // against that solve, not the number flown.
+  local tau is bisect(cross, t_lo, t_hi, v_frac * x_lead / v0).
   return lexicon("ok", true, "t_go", tau,
                  "demand", endpoint_demand(tau, x_lead)["ign"]).
 }
@@ -315,7 +329,11 @@ if not dip["ok"] or dip["demand"] > f_cap {
         + " f_headroom.".
     wait until false.
   }
-  set x_lead to bisect(over, arc["x"], x_far, 10).
+  // The tolerance: v_frac of the reference arc's reach, arc["x"] — the
+  // march's own length scale, and conservative here since the lead is at
+  // least the reach. The delivered lead already scatters by ~1.5 km
+  // (node-delivery-window.md), which the ignition t_go choice absorbs.
+  set x_lead to bisect(over, arc["x"], x_far, v_frac * arc["x"]).
   set dip to dip_at(x_lead).
   if not dip["ok"] {
     set config:ipu to ipu_prior.
@@ -404,10 +422,11 @@ if nd:eta <= 0 {
   print "ABORT: the DOI plan puts the burn in the past.".
   wait until false.
 }
-// Ignition leads the node by half the burn, and the ship needs time to swing
-// onto the burn vector; a node closer than that burns late, which silently
-// moves periapsis east. Failing is self-correcting: by the re-run this crossing
-// has passed and the next is most of an orbit out.
+// Ignition leads the node by half the burn, plus a minute of orientation
+// time to swing onto the burn vector — about three full reversals at the
+// flown slew rate (doi-planner.md). A node closer than that burns late,
+// which silently moves periapsis east. Failing is self-correcting: by the
+// re-run this crossing has passed and the next is most of an orbit out.
 if nd:eta < burn_duration(nd:deltav:mag) / 2 + 60 {
   remove nd.
   set config:ipu to ipu_prior.
@@ -450,7 +469,8 @@ report("# h_pdi " + round(h_pdi) + " m solved (node delivers "
     + round(nd:orbit:periapsis) + ", miss " + round(pe_miss, 1) + " m)").
 report("# arc  reach " + round(arc["x"]) + " m at f_cap " + round(f_cap, 3)
     + "  stall pitch " + round(arc["pitch"], 1)
-    + " deg (reference, not the lead)").
+    + " deg (reference, not the lead)  steps " + round(arc["steps"]) + " of cap "
+    + round(arc["cap"])).
 report("# lead  X " + round(x_lead) + " m law-sized  dip "
     + round(dip["demand"], 3) + " at t_go " + round(dip["t_go"], 1) + " s").
 report("# node  dv " + round(dv_doi, 1) + " m/s  eta " + round(nd:eta)

@@ -44,3 +44,7 @@ re-litigate these; if one turns out to be wrong, fix it here.*
   `bottomaltradar` is the radar-altitude reading from the box's lowest corner: the height
   of the craft's lowest point above the ground, as opposed to `alt:radar`, which reads
   from the part-tree origin and can sit metres above where the craft actually touches.
+- A `Bounds`'s `SIZE` suffix is the vector from `RELMIN` to `RELMAX` — the ray diagonally
+  across the whole box (equal to `EXTENTS * 2`), expressed in the box's own reference
+  frame, so its `:mag` is a frame-independent diagonal length
+  (ksp-kos.github.io/KOS/structures/vessels/bounds.html, verified 2026-07-27).
