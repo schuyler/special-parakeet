@@ -107,7 +107,7 @@ print "target " + round(target_lat, 4) + " " + round(target_lng, 4)
 // periapsis instead of the live ship. The same Euler step and the same seam
 // exit (flight path steeper than 90 - tilt_max below horizontal, where braking
 // hands to terminal), so the reach it returns is the reach the flight
-// controller's solve_f will price. The seed: periapsis altitude is h_pdi, the
+// controller's solve_arc will price. The seed: periapsis altitude is h_pdi, the
 // speed there is vis-viva on the descent ellipse less the ground's motion,
 // because the arc is flown against the ground; pitch is zero, periapsis being
 // horizontal. Equatorial and prograde, per the parking-orbit assumption. The
@@ -207,9 +207,9 @@ function plan_node {
 // === THE PLAN ===
 
 // The reach of a brake at the reserved throttle, plus where its residual
-// horizontal speed would stop decelerated at a_eff — solve_f's aim, evaluated
-// at f_cap so the flight controller solves near f_cap and holds f_headroom in
-// hand.
+// horizontal speed would stop decelerated at a_eff — solve_arc's in-plane
+// aim, evaluated at f_cap so the flight controller solves near f_cap and
+// holds f_headroom in hand.
 local arc is brake_reach(f_cap).
 if arc["pitch"] > tilt_max - 90 {
   set config:ipu to ipu_prior.

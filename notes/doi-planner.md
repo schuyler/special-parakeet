@@ -90,11 +90,12 @@ rate `v/r − g/v` is positive and the path pitches *up* — the flown log shows
 
 The one non-geometric premise is the endpoint. The planner's nominal arc ends at the
 chord's own anchor by construction; flown arcs end earlier and *higher*, because the
-flight controller hands off at the attitude seam with its stopping distance still in hand
-— flight 7 reached the seam at 627 m radar where the chord stood at ~140 m. A seam
-arriving *at* the chord is a marginal handoff the flight already warns about. Below the
-seam the craft is in terminal's near-vertical cone over the site, whose terrain is the
-anchor itself.
+flight controller hands off at high gate with its stopping distance still in hand —
+flight 7 reached the seam at 627 m radar where the chord stood at ~140 m. A seam arriving
+*at* the chord is a marginal handoff the flight already warns about. Below high gate the
+attitude law does not change — terminal holds the same retrograde hold braking flew — so
+the descent stays inside a near-vertical cone over the site for the rest of the way down,
+and the site's own terrain, not the chord, is what certifies that stretch.
 
 The certificate covers the braking arc only. Up-range of PDI it says nothing useful — see
 `terrain-certification.md`, which is also where the certificate would become machinery
@@ -112,7 +113,3 @@ Dimensionless, 0.1, provisional until a flight falsifies it.
 
 - `pdi_height` is a dial, so nothing prices whether it is the *right* altitude. Making it
   a solve is `terrain-certification.md`'s subject.
-- The ignition fallback `f_cmd = f_max` conflates `bisect`'s two bracket failures — safe
-  either way, but the log cannot tell which happened.
-- `bisect`'s failure path prints four lines, which would tear the fixed-row readout
-  mid-burn.

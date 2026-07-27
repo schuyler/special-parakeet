@@ -32,3 +32,15 @@ re-litigate these; if one turns out to be wrong, fix it here.*
 - kOS binds a script's `parameter` values *before* `run common.`, so a tunable whose
   default depends on an imported constant needs a sentinel (this repo uses -1) resolved
   after the imports.
+- `ship:bounds` (a `Bounds`) is **expensive to obtain and should be captured once**:
+  computing it walks every part's own bounds and re-runs the coordinate transforms.
+  Suffixes read off an already-captured box are cheap — the "absolute" ones
+  (`bottomaltradar`, `bottomalt`, `absmin`, `absmax`, `abscenter`, `absorigin`, `facing`,
+  `furthestcorner`) **recompute themselves from the ship's current position/attitude on
+  every read**, so a box captured once still tracks rotation and translation correctly.
+  The box **goes stale on a shape change** — gear, solar panels, and cargo bay doors
+  deploying or retracting, robotic parts moving, docking/undocking, staging, or a control-
+  orientation change — so capture only after the shape that matters has settled.
+  `bottomaltradar` is the radar-altitude reading from the box's lowest corner: the height
+  of the craft's lowest point above the ground, as opposed to `alt:radar`, which reads
+  from the part-tree origin and can sit metres above where the craft actually touches.
