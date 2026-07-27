@@ -41,7 +41,9 @@ The flight is these five statements and nothing more.
    linear in time, so the profile's demand peak sits at an endpoint; equalizing the two
    endpoint demands minimizes the peak. That crossover is the dip — the cheapest profile
    the bracket holds — and the program root-finds `d_ign = d_gate` on
-   `[1.6, 2.6]·X/v₀` rather than searching a minimum. Each endpoint is priced at its own
+   `(1.5, 3)·X/v₀`, the walls where the law's endpoint accelerations flip sign
+   along-track (exact identities of the cubic form: outside them the profile thrusts
+   toward the site at one end), rather than searching a minimum. Each endpoint is priced at its own
    mass, so the solve wraps a two-pass gate-mass contraction: the gate mass sets both
    `v_gate` (through `a_dec`) and the gate-end demand, and each pass shrinks the mass
    error by roughly the propellant fraction. In flight `t_go` decrements by clock. It is
@@ -219,8 +221,10 @@ Carried forward; each was earned by a flight.
   `klumpp-descent-redesign.md` (Open); the FALL rows' facing_err and pitch columns
   witness it per flight.
 - `v_switch` (5 m/s) is a chosen tolerance, carried from the earlier build.
-- The `[1.6, 2.6]·X/v₀` bracket is load-bearing: the demand curve's dip structure is
-  established numerically for this geometry, not proved. A derivation retires it.
+- The `(1.5, 3)·X/v₀` bracket walls are derived — endpoint along-track sign-flip
+  identities — and the crossing sits at `2·X/v₀` (constant deceleration) in the planar
+  limit. Unswept: the gap's single sign change across the full span, validated
+  numerically only on the `[1.6, 2.6]` interior (`klumpp-descent-redesign.md`, Open).
 - Braking-arc terrain clearance is unruled. `clear_min` measures it; nothing checks it.
   The 2026-07-27 flight's minimum was 223 m, three seconds after ignition, with the gate
   1500 m up.

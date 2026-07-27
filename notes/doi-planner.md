@@ -141,8 +141,10 @@ which reserves the whole `f_cap`..`f_max` band for what happens after ignition.
 
 The profile's demand is closed form. Commanded acceleration is linear in time, so the
 demand peaks at an endpoint; the two endpoint demands cross once on the bracket
-`[1.6, 2.6]·X/v₀`, and that crossover is the dip — the least peak demand any `t_go` buys
-at this lead. Each endpoint is priced at its own mass and its own local gravity. The form
+`(1.5, 3)·X/v₀` — the walls where the law's endpoint accelerations flip sign
+along-track, exact for any state — and that crossover is the dip: the least peak demand
+any `t_go` buys at this lead, sitting at `2·X/v₀` (constant deceleration) in the planar
+limit. Each endpoint is priced at its own mass and its own local gravity. The form
 is exact under constant gravity and approximate here only through the ~11 degrees the arc
 subtends; modelled, it under-reads the closed-loop peak by about 0.015 of throttle, inside
 the reserve.

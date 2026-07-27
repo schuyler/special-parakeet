@@ -272,26 +272,27 @@ function endpoint_demand {
 }
 
 // The dip at a candidate lead: root of (ignition demand - gate demand) on
-// the bracket [1.6, 2.6] * x / v0, which straddles the dip and excludes the
-// short-burn wall and the hover branch beyond 3 * x / v0. The bracket is
-// load-bearing (klumpp-descent-redesign.md, Open) and the demand curve's
-// non-monotonicity is why no simpler rule serves.
+// the bracket (1.5, 3) * x / v0 — the walls where the law's endpoint
+// accelerations flip sign along-track, exact for any state, outside which
+// the profile thrusts toward the site at one end. The demands cross once
+// between the walls, at 2 * x / v0 in the planar limit: constant
+// deceleration, the dip (klumpp-descent-redesign.md).
 function dip_at {
   parameter x_lead.
   local cross is { parameter t_go.
     local pair is endpoint_demand(t_go, x_lead).
     return pair["ign"] - pair["gate"]. }.
-  local t_lo is 1.6 * x_lead / v0.
-  local t_hi is 2.6 * x_lead / v0.
+  local t_lo is 1.5 * x_lead / v0.
+  local t_hi is 3 * x_lead / v0.
   // Same-signed gaps at the bracket ends mean the crossing — and the dip —
-  // lies outside the bracket this design certifies: no profile exists at
-  // this lead, and bisect's failure sentinel must not be read as a t_go.
+  // lies outside the two-ended braking class: no profile exists at this
+  // lead, and bisect's failure sentinel must not be read as a t_go.
   // "ok" false carries that outcome to the caller.
   if cross(t_lo) * cross(t_hi) > 0 {
     return lexicon("ok", false).
   }
   // The tolerance: v_frac of the profile's own timescale x_lead/v0 (the
-  // bracket spans 1.6 to 2.6 of it). The flight re-solves t_go from the
+  // bracket spans 1.5 to 3 of it). The flight re-solves t_go from the
   // delivered state at ignition, so this dip's t_go is a cross-check
   // against that solve, not the number flown.
   local t_go is bisect(cross, t_lo, t_hi, v_frac * x_lead / v0).

@@ -101,13 +101,17 @@ if h_gate <= h_pad {
 // rates — and underived (register: Open).
 local t_go_floor is 3.
 
-// The t_go bracket, in units of X/v0 (ground distance over ground speed).
-// It straddles the demand curve's dip (~2.0*X/v0) and excludes the
-// short-burn wall below and the hover branch beyond 3*X/v0. The dip
-// structure is established numerically for this geometry, not proved, so
-// the bracket is load-bearing (register: Open).
-local t_go_lo_frac is 1.6.
-local t_go_hi_frac is 2.6.
+// The t_go bracket, in units of X/v0 (ground distance over ground speed):
+// the walls of the two-ended braking class. The law's endpoint
+// accelerations flip sign along-track at exactly 1.5*X/v0 (ignition end)
+// and 3*X/v0 (gate end) for any state — identities of the cubic form —
+// so outside the walls the profile thrusts toward the site at one end.
+// The endpoint demands cross once between them, at 2*X/v0 in the planar
+// limit: constant deceleration, the dip. A crossing outside the walls is
+// not a braking profile, and the solve refuses it
+// (klumpp-descent-redesign.md).
+local t_go_lo_frac is 1.5.
+local t_go_hi_frac is 3.
 
 // dem_frac: how finely the ignition solve resolves t_go, as a
 // fraction of the profile's own timescale X/v0 — a resolution

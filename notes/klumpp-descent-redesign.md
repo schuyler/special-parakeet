@@ -303,10 +303,14 @@ The five pieces:
   minimum-search: the dip is exactly the crossover of the two endpoint demands — a
   minimax — so the flight root-finds `d_ign = d_gate` rather than searching, and
   `max(d₀, d₁)` is unimodal on the bracket (validated numerically, not asserted).
-  The bracket is `[1.6, 2.6]·X/v₀`, which straddles the
-  modelled dip (2.0·X/v₀) and excludes both the short-burn wall and the hover branch
-  beyond 3·X/v₀; the demand curve's non-monotonicity is established numerically for
-  this geometry, not proved, so the bracket is load-bearing and stated in the code. In
+  The bracket is `(1.5, 3)·X/v₀`, the walls of the two-ended braking class: the law's
+  endpoint accelerations flip sign along-track at exactly `1.5·X/v₀` (ignition end) and
+  `3·X/v₀` (gate end) for any delivered state — identities of the cubic form — so
+  outside the walls the profile thrusts toward the site at one end: the short-burn wall
+  below, the lofted hover branch above. The demands cross once between them, at
+  `2·X/v₀` in the planar limit — constant deceleration, which is why the dip lives
+  there; gravity pricing and the vertical channel move the crossing by percents
+  (modelled 141.1 s against `2X/v₀` 139.2), never the walls. In
   flight `t_go` decrements by clock to `t_go_floor` — the second named departure from the
   source, which re-solves every ~10 s; re-anchoring the schedule re-admits the
   moving-target class. Flown, decrement-only sheds nothing worth chasing: the demand
@@ -458,9 +462,12 @@ reading):
   constant-ratio form is falsified and the formula's `g0/a_dec` dependence is what
   survives. Its argument stays partial until the arrival scatter across craft is
   measured.
-- The demand curve's dip structure is established numerically for this craft and
-  geometry, not analytically; the `t_go` bracket `[1.6, 2.6]·X/v₀` is load-bearing.
-  A derivation of the dip and its bounds would retire the bracket.
+- The `t_go` bracket's walls are derived — the endpoint along-track sign-flip
+  identities at `(1.5, 3)·X/v₀` — and the crossing's planar location `2·X/v₀` is exact
+  (constant deceleration). What stays numerical is the gap's single sign change across
+  the full span: validated numerically on the `[1.6, 2.6]` interior, unswept on the
+  outer margins, where the flown and modelled crossings (both within 2 % of `2·X/v₀`)
+  have never been. An offline sweep across certified geometries closes it.
 - `t_go_floor`, the exit floor and virtual-gate offset, is family-of-`t_settle` and
   underived. What it buys is the airframe tracking the law's final commanded rotation —
   the gains rise toward exit — so its per-flight witness is the facing_err trend across
