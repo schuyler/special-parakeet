@@ -493,6 +493,9 @@ log "# high gate  radar " + round(alt:radar)
 //     and v_floor, so it reaches rest where the flare does — 5 m up,
 //     with the last of the descent vertical rather than still
 //     correcting. h_pad is the margin; there is no second one.
+//   - The lean cone closes over the last h_pad of the fall, so the ship
+//     is upright at the pad whether or not the law converged. A craft
+//     still leaning into its correction lands on one leg.
 // Behind schedule the request rises past f_max into the reserve on its
 // own; near the ground a_req falls below hover and the ship settles
 // instead of bouncing.
@@ -544,8 +547,17 @@ local lock a_vert to g0 + a_req.
 // nothing else would stop the craft lying over, and the thrust binds when
 // the ship is behind schedule and a_vert has climbed into the reserve, so
 // the vertical takes back whatever the lean was borrowing.
+// The cone closes as the pad comes up, on h_pad's own scale: open above
+// 2*h_pad, shut at h_pad. Tilt is what the legs cannot have — a craft
+// leaning into its own correction lands on one leg — and the command
+// degenerates to plumb by itself only when the law has converged, which
+// is exactly the case that does not need protecting. Closing the cone
+// rather than switching to plumb means the ship arrives at the pad
+// already upright, with no attitude step to fly at 5 m under thrust.
+local lock lean_now to lean_max
+    * max(0, min(1, (h_bot - h_pad) / h_pad)).
 local lock a_full to ship:availablethrust / ship:mass.
-local lock a_lat_cap to min(a_vert * tan(lean_max),
+local lock a_lat_cap to min(a_vert * tan(lean_now),
                             sqrt(max(0, a_full ^ 2 - a_vert ^ 2))).
 // What the vertical schedule has left: the descent rate falls from where
 // it is now to v_floor at a_req.

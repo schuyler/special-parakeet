@@ -112,16 +112,23 @@ The flight is these five statements and nothing more.
    retrograde-only arrest removes the velocity while the displacement it already bought
    still lands. Then settle, then SAS.
 
-   Two bounds on the horizontal term, both because the legs cannot absorb sideways
-   motion: it is capped at `lean_max = arccos(f_max)` off plumb — the reserve read as an
-   angle, since holding `a_vert` at a lean costs `a_vert/cos θ` and low gate fires
-   exactly where the schedule needs `f_max` of full thrust — and it chases the offset
-   only while
-   that chase's velocity is still stoppable in the time left — the same stopping test
-   low gate makes on the vertical — and only while the offset is outside `r_bar`. Either
-   way out leaves the damping term running alone, so the lateral state comes to rest.
-   Coming to rest wins over the last few metres; a Kerbal can walk. The command
-   degenerates to plumb as `d` and `v_lat` go to zero, with nothing to switch.
+   Three bounds on the horizontal term, all of them because the legs can absorb neither
+   sideways motion nor a lean at contact:
+
+   - It is capped at `lean_max = arccos(f_max)` off plumb — the thrust reserve read as an
+     angle, since holding `a_vert` at a lean costs `a_vert/cos θ` and low gate fires
+     exactly where the schedule needs `f_max` of full thrust.
+   - It chases the offset only while that chase's velocity is still stoppable in the time
+     left — the same stopping test low gate makes on the vertical — and only while the
+     offset is outside `r_bar`. Either way out leaves the damping term running alone, so
+     the lateral state comes to rest. Coming to rest wins over the last few metres; a
+     Kerbal can walk.
+   - The cone closes over the last `h_pad` of the fall, reaching zero at the pad. The
+     command degenerates to plumb on its own as `d` and `v_lat` go to zero, but only when
+     the law converged — which is the case that needs no protecting. A craft that arrives
+     still leaning into its own correction lands on one leg, so the cone shuts whether or
+     not the correction finished. Closing it rather than switching to plumb means the
+     ship reaches the pad upright with no attitude step to fly under thrust.
 
 The seams are where the invariant changes: the node, PDI, the gate, low gate. Each phase
 hands the next a state it can finish from — the coast hands braking a periapsis, braking

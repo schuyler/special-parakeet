@@ -528,8 +528,9 @@ reading):
   the thrust reserve read as an angle, 31.8° at `f_max` 0.85 — the clock is the vertical
   schedule's own, and its floor is the braking exit's authority argument applied
   sideways. The margin before contact is `h_pad`, which the flare already aims at, so the
-  law comes to rest 5 m up rather than reserving a second one. The witnesses are the
-  `# arrest` line at
+  law comes to rest 5 m up rather than reserving a second one, and the cone closes over
+  that same last `h_pad` so the ship reaches the pad upright even if it did not. The
+  witnesses are the `# arrest` line at
   ignition — offset, drift, burn time, lean cap — and the touchdown `miss`/`drift` pair,
   which is where the legs' tolerance is measured. The signature of the law working is
   `drift` at contact near zero with `miss` inside `r_bar`; the signature of it being
