@@ -113,7 +113,10 @@ The flight is these five statements and nothing more.
    still lands. Then settle, then SAS.
 
    Two bounds on the horizontal term, both because the legs cannot absorb sideways
-   motion: it is capped at `lean_max` off plumb, and it chases the offset only while
+   motion: it is capped at `lean_max = arccos(f_max)` off plumb — the reserve read as an
+   angle, since holding `a_vert` at a lean costs `a_vert/cos θ` and low gate fires
+   exactly where the schedule needs `f_max` of full thrust — and it chases the offset
+   only while
    that chase's velocity is still stoppable in the time left — the same stopping test
    low gate makes on the vertical — and only while the offset is outside `r_bar`. Either
    way out leaves the damping term running alone, so the lateral state comes to rest.
@@ -245,12 +248,12 @@ Carried forward; each was earned by a flight.
   pieces and the steering-manager slew model are registered in
   `klumpp-descent-redesign.md` (Open); the FALL rows' facing_err and pitch columns
   witness it per flight.
-- The arrest's two horizontal constants are chosen, not derived: `lean_max` (15°, the
-  tilt the correction may spend — its cost is `1/cos` of thrust, 3.5 %, out of the
-  reserve) and the lateral reserve (0.3 of the arrest's own duration, the fall left over
-  after the horizontal law is done). Both are dimensionless and free of craft and body,
-  and neither has an argument. Their witnesses are the `# arrest` line and the touchdown
-  `miss`/`drift` pair.
+- The lateral reserve (0.3 of the arrest's own duration, the fall left over after the
+  horizontal law is done) is chosen and unargued. It may also be redundant: the
+  stoppable test already guarantees the lateral state can come to rest in the time left,
+  and `t_h`'s own floor keeps the damping term strong through the end of the burn, so
+  the reserve is belt over braces. Its witnesses are the `# arrest` line and the
+  touchdown `miss`/`drift` pair.
 - The horizontal law is unflown. It is built from arithmetic over registered numbers, not
   from a log, and it changes what the ship does in its last ten seconds above the ground.
 - The `(1.5, 3)·X/v₀` bracket walls are derived — endpoint along-track sign-flip

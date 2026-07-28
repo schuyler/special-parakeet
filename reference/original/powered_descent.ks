@@ -79,12 +79,14 @@ local v_floor is 2.
 local r_bar is 10.
 
 // lean_max: the tilt off plumb the arrest may spend on horizontal
-// correction, degrees. The vertical schedule is held exactly and the lean
-// is paid for by demanding a_vert/cos(lean_max) of thrust — 3.5 % at 15
-// deg — out of the reserve the arrest already carries above f_max. It
-// bounds the craft's tilt near the ground as much as it bounds the
-// lateral authority, which is why it is an angle and not an acceleration.
-local lean_max is 15.
+// correction, degrees — the reserve, read as an angle. Holding the
+// vertical schedule a_vert while leaning theta costs a_vert/cos(theta) of
+// thrust, and the ceiling is the engine's own limit A. Low gate fires
+// exactly where the schedule needs f_max of A, so cos(theta) >= f_max and
+// the cone is arccos(f_max): 31.8 deg at f_max 0.85. The reserve above
+// f_max is what the lean spends, which is what it was booked for.
+// Nothing is chosen here — move f_max and the cone moves with it.
+local lean_max is arccos(f_max).
 
 // The terminal chain needs a live engine with thrust at f_max above
 // weight, and a gate above the flare height — checked here, before the
@@ -532,9 +534,18 @@ local prev_burning is false.
 local lock d_lat to vxcl(up:vector, tgt:position).
 local lock v_lat to vxcl(up:vector, ship:velocity:surface).
 local lock a_vert to g0 + a_req.
-// The lean cap as an acceleration: tilting a_vert by lean_max buys this
-// much sideways and costs a_vert/cos(lean_max) of thrust.
-local lock a_lat_cap to a_vert * tan(lean_max).
+// The lean cap as an acceleration, from both directions it can bind. The
+// angle term is what tilting a_vert by lean_max buys sideways; the thrust
+// term is what is left under the engine's own ceiling once the vertical
+// schedule is paid. The two are equal at the arrest trigger, where the
+// schedule needs exactly f_max — and they part either side of it: the
+// angle binds near the ground, where a_req has fallen below hover and
+// nothing else would stop the craft lying over, and the thrust binds when
+// the ship is behind schedule and a_vert has climbed into the reserve, so
+// the vertical takes back whatever the lean was borrowing.
+local lock a_full to ship:availablethrust / ship:mass.
+local lock a_lat_cap to min(a_vert * tan(lean_max),
+                            sqrt(max(0, a_full ^ 2 - a_vert ^ 2))).
 // What the vertical schedule has left: the descent rate falls from where
 // it is now to v_floor at a_req.
 local lock t_tg to max(0.1,
