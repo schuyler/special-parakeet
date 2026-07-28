@@ -248,12 +248,11 @@ Carried forward; each was earned by a flight.
   pieces and the steering-manager slew model are registered in
   `klumpp-descent-redesign.md` (Open); the FALL rows' facing_err and pitch columns
   witness it per flight.
-- The lateral reserve (0.3 of the arrest's own duration, the fall left over after the
-  horizontal law is done) is chosen and unargued. It may also be redundant: the
-  stoppable test already guarantees the lateral state can come to rest in the time left,
-  and `t_h`'s own floor keeps the damping term strong through the end of the burn, so
-  the reserve is belt over braces. Its witnesses are the `# arrest` line and the
-  touchdown `miss`/`drift` pair.
+- Nothing in the arrest's horizontal law is chosen: the lean cone is `arccos(f_max)`, the
+  clock's floor is the braking exit's authority argument applied sideways, and the margin
+  the law aims to be done by is that floor again — the settling time of the fixed-gain
+  regime the floor creates. Its witnesses are the `# arrest` line and the touchdown
+  `miss`/`drift` pair.
 - The horizontal law is unflown. It is built from arithmetic over registered numbers, not
   from a log, and it changes what the ship does in its last ten seconds above the ground.
 - The `(1.5, 3)·X/v₀` bracket walls are derived — endpoint along-track sign-flip

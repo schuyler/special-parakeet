@@ -550,14 +550,20 @@ local lock a_lat_cap to min(a_vert * tan(lean_max),
 // it is now to v_floor at a_req.
 local lock t_tg to max(0.1,
     (abs(verticalspeed) - v_floor) / max(0.01, a_req)).
-// t_lat_reserve: the fall left over after the horizontal law is done,
-// sized once when the arrest fires as a fraction of its own duration.
-// t_h floors on the same authority argument the braking exit uses —
-// correcting an r_bar-sized offset must not ask more sideways than the
-// lean cap can give.
-local t_lat_reserve is 0.
+// The horizontal law's clock. Its floor is the braking exit's authority
+// argument applied sideways: correcting an r_bar-sized offset must not
+// ask more than the lean cap can give. At the floor the law stops being
+// a terminal law and becomes fixed-gain — d'' + (4/t_h)d' + (6/t_h^2)d,
+// damping ratio 2/sqrt(6), time constant t_h/2 — so its own settling
+// time is about t_h_floor.
+//
+// That settling time is also the margin the law is given: it aims at rest
+// t_h_floor before the schedule reaches v_floor, not at touchdown itself,
+// because the legs cannot absorb sideways motion and arriving at rest
+// exactly at contact leaves none for a t_tg that came out short. Both
+// uses are the same number, so there is no reserve to choose.
 local lock t_h_floor to sqrt(6 * r_bar / max(0.01, a_lat_cap)).
-local lock t_h to max(t_h_floor, t_tg - t_lat_reserve).
+local lock t_h to max(t_h_floor, t_tg - t_h_floor).
 
 local lock chase to d_lat:mag > r_bar
                 and v_lat:mag < 0.5 * a_lat_cap * t_tg.
@@ -588,18 +594,15 @@ until ship:status = "LANDED"
       and ship:velocity:surface:mag ^ 2
           >= 2 * a_dec * max(0, h_bot - h_pad) {
     set burning to true.
-    // The arrest's own duration, read off the schedule at the instant it
-    // fires: what t_tg says now is how long the burn has. The horizontal
-    // law is given all but the last of it, so the descent finishes
-    // vertical instead of still correcting.
-    set t_lat_reserve to 0.3 * t_tg.
     print "ARREST: from " + round(h_bot) + " m, lateral "
         + round(d_lat:mag) + " m at " + round(v_lat:mag, 1) + " m/s.".
+    // The job the horizontal law is handed, and the clock it has to do it
+    // on: t_arrest is the whole burn, t_lat what the law aims at rest by.
     log "# arrest  h_bot " + round(h_bot)
         + "  offset " + round(d_lat:mag)
         + "  drift " + round(v_lat:mag, 2)
         + "  t_arrest " + round(t_tg, 1)
-        + "  t_lat " + round(t_tg - t_lat_reserve, 1)
+        + "  t_lat " + round(t_h, 1)
         + "  a_lat_cap " + round(a_lat_cap, 2) to flightlog.
   }
   // log_dt: seconds between CSV rows — 0.25 through the arrest burn,
