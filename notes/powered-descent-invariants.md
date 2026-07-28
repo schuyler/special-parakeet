@@ -249,10 +249,10 @@ Carried forward; each was earned by a flight.
   `klumpp-descent-redesign.md` (Open); the FALL rows' facing_err and pitch columns
   witness it per flight.
 - Nothing in the arrest's horizontal law is chosen: the lean cone is `arccos(f_max)`, the
-  clock's floor is the braking exit's authority argument applied sideways, and the margin
-  the law aims to be done by is that floor again — the settling time of the fixed-gain
-  regime the floor creates. Its witnesses are the `# arrest` line and the touchdown
-  `miss`/`drift` pair.
+  clock is the vertical schedule's own, and its floor is the braking exit's authority
+  argument applied sideways. The margin the legs need is `h_pad`, which the flare already
+  aims at — the law reaches rest where the schedule does, 5 m up at `v_floor`. Its
+  witnesses are the `# arrest` line and the touchdown `miss`/`drift` pair.
 - The horizontal law is unflown. It is built from arithmetic over registered numbers, not
   from a log, and it changes what the ship does in its last ten seconds above the ground.
 - The `(1.5, 3)·X/v₀` bracket walls are derived — endpoint along-track sign-flip

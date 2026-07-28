@@ -489,9 +489,10 @@ log "# high gate  radar " + round(alt:radar)
 //     r_bar. Either way out, the damping term is left running alone and
 //     the lateral state comes to rest. Coming to rest always wins over
 //     closing the last few metres; a Kerbal can walk.
-//   - The horizontal state is aimed at rest with a reserve of the fall
-//     still to run, so the end of the descent is vertical rather than
-//     still correcting.
+//   - It runs on the vertical schedule's own clock, which ends at h_pad
+//     and v_floor, so it reaches rest where the flare does — 5 m up,
+//     with the last of the descent vertical rather than still
+//     correcting. h_pad is the margin; there is no second one.
 // Behind schedule the request rises past f_max into the reserve on its
 // own; near the ground a_req falls below hover and the ship settles
 // instead of bouncing.
@@ -550,20 +551,18 @@ local lock a_lat_cap to min(a_vert * tan(lean_max),
 // it is now to v_floor at a_req.
 local lock t_tg to max(0.1,
     (abs(verticalspeed) - v_floor) / max(0.01, a_req)).
-// The horizontal law's clock. Its floor is the braking exit's authority
-// argument applied sideways: correcting an r_bar-sized offset must not
-// ask more than the lean cap can give. At the floor the law stops being
-// a terminal law and becomes fixed-gain — d'' + (4/t_h)d' + (6/t_h^2)d,
-// damping ratio 2/sqrt(6), time constant t_h/2 — so its own settling
-// time is about t_h_floor.
+// The horizontal law's clock: the vertical schedule's own, floored. The
+// floor is the braking exit's authority argument applied sideways —
+// correcting an r_bar-sized offset must not ask more than the lean cap
+// can give — and below it the law stops being a terminal law and becomes
+// fixed-gain, d'' + (4/t_h)d' + (6/t_h^2)d, damping ratio 2/sqrt(6).
 //
-// That settling time is also the margin the law is given: it aims at rest
-// t_h_floor before the schedule reaches v_floor, not at touchdown itself,
-// because the legs cannot absorb sideways motion and arriving at rest
-// exactly at contact leaves none for a t_tg that came out short. Both
-// uses are the same number, so there is no reserve to choose.
+// The law reaches rest where the schedule does, which is h_pad above the
+// ground at v_floor, not at contact: the margin the legs need is the pad
+// the flare already aims at, and the fall through it is a further ~2 s
+// with the damping term still running. Nothing else is reserved.
 local lock t_h_floor to sqrt(6 * r_bar / max(0.01, a_lat_cap)).
-local lock t_h to max(t_h_floor, t_tg - t_h_floor).
+local lock t_h to max(t_h_floor, t_tg).
 
 local lock chase to d_lat:mag > r_bar
                 and v_lat:mag < 0.5 * a_lat_cap * t_tg.

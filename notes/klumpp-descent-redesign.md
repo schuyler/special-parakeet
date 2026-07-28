@@ -525,10 +525,11 @@ reading):
 - The arrest's horizontal law is **unflown**, and it is not built from a log: it is
   arithmetic over registered numbers, changing what the ship does in its last ten
   seconds over the ground. Nothing in it is chosen: the lean cone is `arccos(f_max)` —
-  the thrust reserve read as an angle, 31.8° at `f_max` 0.85 — the clock's floor is the
-  braking exit's authority argument applied sideways, and the margin the law aims to be
-  done by is that floor again, since the floor is what turns the terminal law into a
-  fixed-gain one whose settling time it is. The witnesses are the `# arrest` line at
+  the thrust reserve read as an angle, 31.8° at `f_max` 0.85 — the clock is the vertical
+  schedule's own, and its floor is the braking exit's authority argument applied
+  sideways. The margin before contact is `h_pad`, which the flare already aims at, so the
+  law comes to rest 5 m up rather than reserving a second one. The witnesses are the
+  `# arrest` line at
   ignition — offset, drift, burn time, lean cap — and the touchdown `miss`/`drift` pair,
   which is where the legs' tolerance is measured. The signature of the law working is
   `drift` at contact near zero with `miss` inside `r_bar`; the signature of it being
