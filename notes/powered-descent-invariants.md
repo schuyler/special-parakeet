@@ -103,9 +103,22 @@ The flight is these five statements and nothing more.
    the swing to plumb spends the front of the FALL window (106° in 5–6 s flown, against
    ~11 s of window; `klumpp-descent-redesign.md`, High gate placement). Low gate: the
    arrest schedule fires when `f_max` could just bring the total speed to rest `h_pad`
-   above the ground. Arrest burn: hold the vertical deceleration that carries the descent
-   rate to `v_floor` at the pad, restoring the vertical share the retrograde lean sends
-   sideways, plumb below `v_switch`. Then settle, then SAS.
+   above the ground. Arrest burn: a commanded vector, `a_vert·up + a_lat`. The vertical
+   component is the schedule that carries the descent rate to `v_floor` at the pad,
+   held exactly, so the lean never steals from the flare and the throttle carries the
+   lean's own cost. The horizontal component is the same law braking flies —
+   `a_lat = 6·d/t_h² − 4·v_lat/t_h` — run to rest over the site, because whatever offset
+   and drift arrive at the gate are multiplied by the fall beneath it and a
+   retrograde-only arrest removes the velocity while the displacement it already bought
+   still lands. Then settle, then SAS.
+
+   Two bounds on the horizontal term, both because the legs cannot absorb sideways
+   motion: it is capped at `lean_max` off plumb, and it chases the offset only while
+   that chase's velocity is still stoppable in the time left — the same stopping test
+   low gate makes on the vertical — and only while the offset is outside `r_bar`. Either
+   way out leaves the damping term running alone, so the lateral state comes to rest.
+   Coming to rest wins over the last few metres; a Kerbal can walk. The command
+   degenerates to plumb as `d` and `v_lat` go to zero, with nothing to switch.
 
 The seams are where the invariant changes: the node, PDI, the gate, low gate. Each phase
 hands the next a state it can finish from — the coast hands braking a periapsis, braking
@@ -207,10 +220,11 @@ Carried forward; each was earned by a flight.
 - When observed behavior is arithmetically impossible under the intended constants, audit
   the constants as flown before inventing dynamics.
 - Discrete guards are not fudges; they are the decisions a continuous law cannot make —
-  when to fire, when to quit, when to stop steering. The arrest latch and the `v_switch`
-  plumb transition are the two this program keeps. But every discrete transition costs
-  whatever attitude the delivery ties to it, so the transitions are placed where the
-  attitude is already where it needs to be.
+  when to fire, when to quit, when to stop steering. The arrest latch is the one this
+  program keeps. But every discrete transition costs whatever attitude the delivery ties
+  to it, so the transitions are placed where the attitude is already where it needs to
+  be — and a transition whose only job was to guard a degenerate direction is better
+  removed than placed, by commanding a vector that does not degenerate.
 - A solve whose objective re-reads the world on every evaluation is chasing a moving
   target. Freeze the problem, or remove the solve from the loop.
 
@@ -231,7 +245,14 @@ Carried forward; each was earned by a flight.
   pieces and the steering-manager slew model are registered in
   `klumpp-descent-redesign.md` (Open); the FALL rows' facing_err and pitch columns
   witness it per flight.
-- `v_switch` (5 m/s) is a chosen tolerance, carried from the earlier build.
+- The arrest's two horizontal constants are chosen, not derived: `lean_max` (15°, the
+  tilt the correction may spend — its cost is `1/cos` of thrust, 3.5 %, out of the
+  reserve) and the lateral reserve (0.3 of the arrest's own duration, the fall left over
+  after the horizontal law is done). Both are dimensionless and free of craft and body,
+  and neither has an argument. Their witnesses are the `# arrest` line and the touchdown
+  `miss`/`drift` pair.
+- The horizontal law is unflown. It is built from arithmetic over registered numbers, not
+  from a log, and it changes what the ship does in its last ten seconds above the ground.
 - The `(1.5, 3)·X/v₀` bracket walls are derived — endpoint along-track sign-flip
   identities — and the crossing sits at `2·X/v₀` (constant deceleration) in the planar
   limit. Unswept: the gap's single sign change across the full span, validated

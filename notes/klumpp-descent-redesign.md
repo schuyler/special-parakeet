@@ -86,13 +86,19 @@ speed to rest `h_pad` above the pad.
 | high gate | event: braking exits over the site at `h_gate`, mid-corridor descent, drift nulled | `t_go` reaches the floor `t_go_floor` |
 | FALL | engine off, retrograde attitude hold (≈ plumb at zero drift), vertical fall | — |
 | low gate | event: the arrest schedule fires on `h_bot` | existing |
-| arrest burn | throttle carries descent rate to `v_floor`; plumb below `v_switch` | existing |
+| arrest burn | commanded vector: vertical schedule to `v_floor`, plus the horizontal law run to rest over the site | `a_vert·up + a_lat`, `a_lat = 6·d/t_h² − 4·v_lat/t_h` |
 | touchdown, settle | contact witness, settle trace | existing |
 
-**FALL stays inert — decided.** No powered approach phase follows braking. The Apollo
-P64 approach phase is recorded as a *designed extension point*: the same guidance law
-with a second target set, switched in at the gate, to be built only if flights measure
-gate drift beyond ~1–2 m/s or offset beyond the 10 m bar. Apollo's other
+**FALL stays inert — decided.** No powered approach phase follows braking; the horizontal
+correction lives in the arrest, which is already burning. The Apollo P64 approach phase
+stays a *designed extension point*: the same guidance law with a second target set,
+switched in at the gate rather than at low gate, and with a fresh `t_go` instead of the
+arrest's leftovers. What promotes it is the arrest's horizontal law failing to hold the
+miss inside `r_bar` — the arrest corrects late, after the fall has already multiplied the
+gate residuals, and it corrects with whatever lean it can spare from the flare. The
+trigger is the touchdown `miss`, not the gate residuals: a flight can sit inside the
+gate's own drift and offset bounds and still land outside the bar, because the lever
+between them is the fall. Apollo's other
 reasons for P64 do not apply: its trajectory was shaped so the commander could see the
 site out the window, and kOS reads state vectors with no window; it existed so a human
 could redesignate the site mid-approach, and ours is a fixed geoposition chosen before
@@ -101,17 +107,17 @@ and our engine throttles continuously; it managed the attitude transition to
 windows-forward flight, and our pitch-over falls out of the vector law with no attitude
 program.
 
-FALL holds surface retrograde above `v_switch`. With drift nulled at the gate, retrograde
+FALL holds surface retrograde. With drift small at the gate, retrograde
 and plumb coincide to within the drift residual, so — per the thrust-waits-for-attitude
 lesson (`powered-descent-invariants.md`, Standing lessons) — there is no slew to pay at
 arrest ignition: the nose is already on the thrust direction when low gate fires. The
 alignment is bought at FALL entry, not free: braking's arrival attitude is the profile's,
 near the horizon when the arrival acceleration is mostly braking, and the swing from it
 to plumb spends the front of the FALL window (High gate placement, third bullet). The
-terminal chain below the gate — FALL, the low-gate schedule on `h_bot`, the arrest burn
-with its lean-cosine factor, the witness lines — carries over from the earlier build
-intact, and it has flown 33 m and 34 m misses under the retrograde braking phase and 15 m
-under this one. The `ship:bounds` altimeter has now flown a flare: `# bounds dh_core 1.52`
+terminal chain below the gate — FALL, the low-gate schedule on `h_bot`, the arrest, the
+witness lines — has flown 33 m and 34 m misses under the retrograde braking phase and
+15 m under this one, all three with an arrest that held retrograde and corrected sideways
+only as a by-product. The `ship:bounds` altimeter has now flown a flare: `# bounds dh_core 1.52`
 accepted by its guard, `h_bot` reading 0.2 m at contact against `alt:radar` 5.5, tilt 0.5°
 and no tip-over (`retrograde-terminal-findings.md`).
 
@@ -516,7 +522,21 @@ reading):
   Registered, deliberately unbuilt.
 - Saturation response in braking — ride it or abort to orbit — is policy, Schuyler's
   call, and a named departure from the source's abort prescription.
-- `v_switch` (5 m/s, the plumb-below speed in the arrest) is chosen, not derived.
+- The arrest's horizontal law is **unflown**, and it is not built from a log: it is
+  arithmetic over registered numbers, changing what the ship does in its last ten
+  seconds over the ground. Its two constants are chosen and unargued — `lean_max` (15°,
+  costing `1/cos` of thrust, 3.5 %, out of the arrest's existing reserve) and the lateral
+  reserve (0.3 of the arrest's own duration). The witnesses are the `# arrest` line at
+  ignition — offset, drift, burn time, lean cap — and the touchdown `miss`/`drift` pair,
+  which is where the legs' tolerance is measured. The signature of the law working is
+  `drift` at contact near zero with `miss` inside `r_bar`; the signature of it being
+  under-powered is `miss` outside `r_bar` with `drift` still near zero, which is the law
+  correctly choosing rest over the last few metres.
+- The flight carries **two changes at once**: the exit floor's new closed form and the
+  arrest's horizontal law. That breaks one-instrumented-change-per-flight, and the two
+  are separable — the floor moves gate residuals, the horizontal law moves what happens
+  to them afterward. If the first flight disagrees with the plan, that ambiguity is the
+  reason.
 - The fixbatch tip-over's full mechanism (datum error vs slope vs leg geometry). It has
   not recurred; the settle trace and touchdown witness are the instruments if it does.
 - Whether the reference arc's `h_pdi` — a gravity-turn altitude — is the right altitude

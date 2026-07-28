@@ -67,19 +67,24 @@ set config:ipu to 2000.
 // derived quantity. v_floor is the touchdown descent rate the legs must
 // survive: walking pace, well under stock landing-leg tolerances; no
 // impact tolerance appears in the Part structure's suffix list to derive
-// it from. v_switch is the speed below which the surface retrograde
-// direction is mostly noise and the nose goes to plumb — a small
-// tolerance, not a landing number.
+// it from.
 local g0 is body:mu / body:radius ^ 2.
 local h_pad is 5.
 local v_floor is 2.
-local v_switch is 5.
 
 // r_bar: the landing accuracy this design is held to, metres. It is the
 // requirement, and so also the scale at which the guidance is told to
 // stop caring — a scale-free law given none will chase its own noise.
 // An accuracy bound, free of the craft and the body.
 local r_bar is 10.
+
+// lean_max: the tilt off plumb the arrest may spend on horizontal
+// correction, degrees. The vertical schedule is held exactly and the lean
+// is paid for by demanding a_vert/cos(lean_max) of thrust — 3.5 % at 15
+// deg — out of the reserve the arrest already carries above f_max. It
+// bounds the craft's tilt near the ground as much as it bounds the
+// lateral authority, which is why it is an angle and not an acceleration.
+local lean_max is 15.
 
 // The terminal chain needs a live engine with thrust at f_max above
 // weight, and a gate above the flare height — checked here, before the
@@ -459,17 +464,35 @@ log "# high gate  radar " + round(alt:radar)
     + "  lng " + round(ship:geoposition:lng, 4) to flightlog.
 
 // === TERMINAL DESCENT ===
-// FALL: engine off, holding surface
-// retrograde — with drift nulled at the gate, retrograde and plumb
-// coincide to within the residual, so the nose is already on the thrust
-// direction when the arrest ignites and there is no slew to pay. The
-// arrest burn holds the vertical deceleration a_req that carries the
-// descent rate to v_floor at the pad; the v/|vv| factor is the retrograde
-// lean's cosine, restoring the vertical share the lean sends sideways,
-// gated with the steering — below v_switch the nose is plumb and there is
-// no lean to pay for. Behind schedule the request rises past f_max into
-// the reserve on its own; near the ground a_req falls below hover and the
-// ship settles instead of bouncing.
+// FALL: engine off, holding surface retrograde — with drift small at the
+// gate, retrograde and plumb coincide to within the residual, so the nose
+// is within the arrest's own lean of the thrust direction when it ignites
+// and there is no slew to pay.
+//
+// The arrest burn flies a vector: the vertical schedule that carries the
+// descent rate to v_floor at the pad, plus a horizontal term that lands
+// the ship on the site. Whatever offset and drift arrive at the gate are
+// multiplied by the fall beneath it — the drift runs unopposed through
+// FALL, and a retrograde-only arrest removes the velocity while the
+// displacement it already bought still lands. So the horizontal term is
+// not optional precision; it is what keeps the miss inside r_bar.
+//
+// It is the same law braking flies, horizontally, to rest over the site:
+// a_lat = 6*d/t^2 - 4*v/t carries offset and drift to zero together.
+// Two things bound it, both because the legs cannot absorb sideways
+// motion:
+//   - The offset is chased only while the velocity that chase would build
+//     is still stoppable in the time left — the same stopping test low
+//     gate makes on the vertical — and only while the offset is outside
+//     r_bar. Either way out, the damping term is left running alone and
+//     the lateral state comes to rest. Coming to rest always wins over
+//     closing the last few metres; a Kerbal can walk.
+//   - The horizontal state is aimed at rest with a reserve of the fall
+//     still to run, so the end of the descent is vertical rather than
+//     still correcting.
+// Behind schedule the request rises past f_max into the reserve on its
+// own; near the ground a_req falls below hover and the ship settles
+// instead of bouncing.
 print "FALL: from " + round(alt:radar) + " m.".
 lock throttle to 0.
 // The terminal phase's altimeter: the height of the craft's lowest point
@@ -502,15 +525,50 @@ local lock a_req to (verticalspeed ^ 2 - v_floor ^ 2)
                   / (2 * max(1, h_bot - h_pad)).
 local burning is false.
 local prev_burning is false.
+
+// The horizontal state, and the vertical schedule the lean is measured
+// against. d_lat points from the ship to the site along the ground; v_lat
+// is the ground speed that would carry it past.
+local lock d_lat to vxcl(up:vector, tgt:position).
+local lock v_lat to vxcl(up:vector, ship:velocity:surface).
+local lock a_vert to g0 + a_req.
+// The lean cap as an acceleration: tilting a_vert by lean_max buys this
+// much sideways and costs a_vert/cos(lean_max) of thrust.
+local lock a_lat_cap to a_vert * tan(lean_max).
+// What the vertical schedule has left: the descent rate falls from where
+// it is now to v_floor at a_req.
+local lock t_tg to max(0.1,
+    (abs(verticalspeed) - v_floor) / max(0.01, a_req)).
+// t_lat_reserve: the fall left over after the horizontal law is done,
+// sized once when the arrest fires as a fraction of its own duration.
+// t_h floors on the same authority argument the braking exit uses —
+// correcting an r_bar-sized offset must not ask more sideways than the
+// lean cap can give.
+local t_lat_reserve is 0.
+local lock t_h_floor to sqrt(6 * r_bar / max(0.01, a_lat_cap)).
+local lock t_h to max(t_h_floor, t_tg - t_lat_reserve).
+
+local lock chase to d_lat:mag > r_bar
+                and v_lat:mag < 0.5 * a_lat_cap * t_tg.
+local lock a_lat_raw to (choose d_lat * (6 / t_h ^ 2)
+                                if chase else v(0, 0, 0))
+                      - v_lat * (4 / t_h).
+// Clamped to the lean cap without normalising: the factor is 1 while the
+// demand fits and a_lat_cap/|a_lat_raw| once it does not, so a zero demand
+// never reaches a normalize.
+local lock a_lat to a_lat_raw
+    * (a_lat_cap / max(a_lat_cap, a_lat_raw:mag)).
+// The commanded thrust vector. Its vertical component is the schedule
+// exactly, so the lean never steals from the flare; the magnitude carries
+// the lean's cost, which is what the throttle asks for. It degenerates to
+// plumb as d_lat and v_lat go to zero, with nothing to switch.
+local lock a_arrest to up:vector * a_vert + a_lat.
+
 lock steering to lookdirup(
-    (choose srfretrograde:vector if ship:velocity:surface:mag > v_switch
-            else up:vector),
+    choose a_arrest if burning else srfretrograde:vector,
     ship:facing:topvector).
 lock throttle to choose 0 if not burning
-    else (g0 + a_req)
-       * (choose ship:velocity:surface:mag / max(1, -verticalspeed)
-                 if ship:velocity:surface:mag > v_switch else 1)
-       * ship:mass / max(0.001, ship:availablethrust).
+    else a_arrest:mag * ship:mass / max(0.001, ship:availablethrust).
 set t_logged to 0.
 local t_printed is 0.
 until ship:status = "LANDED"
@@ -519,21 +577,32 @@ until ship:status = "LANDED"
       and ship:velocity:surface:mag ^ 2
           >= 2 * a_dec * max(0, h_bot - h_pad) {
     set burning to true.
-    print "ARREST: from " + round(h_bot) + " m.".
+    // The arrest's own duration, read off the schedule at the instant it
+    // fires: what t_tg says now is how long the burn has. The horizontal
+    // law is given all but the last of it, so the descent finishes
+    // vertical instead of still correcting.
+    set t_lat_reserve to 0.3 * t_tg.
+    print "ARREST: from " + round(h_bot) + " m, lateral "
+        + round(d_lat:mag) + " m at " + round(v_lat:mag, 1) + " m/s.".
+    log "# arrest  h_bot " + round(h_bot)
+        + "  offset " + round(d_lat:mag)
+        + "  drift " + round(v_lat:mag, 2)
+        + "  t_arrest " + round(t_tg, 1)
+        + "  t_lat " + round(t_tg - t_lat_reserve, 1)
+        + "  a_lat_cap " + round(a_lat_cap, 2) to flightlog.
   }
   // log_dt: seconds between CSV rows — 0.25 through the arrest burn,
   // 1 s otherwise.
   local log_dt is choose 0.25 if burning else 1.
   if time:seconds - t_logged >= log_dt {
-    // The commanded vector for the row; max(0.001, ...) keeps it pointing
-    // somewhere when the engine is off. The cross column carries the full
-    // horizontal drift speed — v_to_site is blind to the tangential
-    // component. zem is spent below the gate; ach rides on the throttle
-    // request, meaningful only when this row and the last both burned —
-    // across the ignition row the previous command is FALL's zero.
-    local cmd is max(0.001, throttle * ship:availablethrust / ship:mass)
-        * (choose srfretrograde:vector
-                  if ship:velocity:surface:mag > v_switch else up:vector).
+    // The commanded vector for the row: the arrest's own command while it
+    // burns, the held attitude while it does not — facing_err reads the
+    // direction either way. The cross column carries the full horizontal
+    // drift speed — v_to_site is blind to the tangential component. zem
+    // is spent below the gate; ach rides on the throttle request,
+    // meaningful only when this row and the last both burned — across the
+    // ignition row the previous command is FALL's zero.
+    local cmd is choose a_arrest if burning else srfretrograde:vector.
     local dt_row is max(0.1, time:seconds - prev_t).
     local a_meas is (ship:velocity:surface - prev_v) * (1 / dt_row) - g_vec().
     local ach is choose a_meas:mag / max(0.001, prev_cmd:mag)
@@ -564,11 +633,15 @@ until ship:status = "LANDED"
 }
 lock throttle to 0.
 // Touchdown witness: state at ground contact, before the settle wait — vv
-// the descent rate, drift the horizontal speed, tilt off plumb, radar the
-// core altimeter reading, bot the height of the craft's lowest point
-// above ground — the pair re-measures dh_core at contact.
+// the descent rate, miss the horizontal distance to the site that the
+// landing is judged by, drift the sideways speed the legs had to absorb
+// (the arrest is built to leave none; what lands here is the number that
+// falsifies it), tilt off plumb, radar the core altimeter reading, bot
+// the height of the craft's lowest point above ground — the pair
+// re-measures dh_core at contact.
 log "# touchdown  vv " + round(verticalspeed, 1)
-    + "  drift " + round(vxcl(up:vector, ship:velocity:surface):mag, 1)
+    + "  miss " + round(vxcl(up:vector, tgt:position):mag, 1)
+    + "  drift " + round(vxcl(up:vector, ship:velocity:surface):mag, 2)
     + "  tilt " + round(vang(up:vector, ship:facing:vector), 1)
     + "  radar " + round(alt:radar, 1)
     + "  bot " + round(h_bot, 1) to flightlog.
