@@ -211,22 +211,20 @@ function above_terrain {
   return b:altitudeof(pos) - b:geopositionof(pos):terrainheight.
 }
 
+// Seconds from now until the drag-free trajectory meets the terrain: 0 if
+// the ship is already at or below it, -1 if it does not meet it before
+// periapsis. above_terrain falls monotonically from now to periapsis
+// whenever periapsis is underground, so those two times bracket exactly one
+// crossing and bisection converges on it from both sides. A secant or
+// Newton step cannot be used here: the height profile is symmetric about
+// periapsis, so two samples straddling it have equal heights and a zero
+// slope to divide by. The two ends are tested here rather than left to
+// bisect, whose bracketing-failure branch prints four lines every call.
 function landing_time {
-  local t is 0.
-  local h is above_terrain(t).
-  local dt is ship:orbit:eta:periapsis / 2.
-  // print "DT: " + round(dt, 1) + " T:" + round(t, 1) + " H:" + round(h,1).
-  until abs(dt) <= 0.1 {
-    local t1 is t + dt.
-    local h1 is above_terrain(t1).
-    local slope is (h - h1) / dt.
-    // print "DT: " + round(dt, 1) + " T:" + round(t1, 1) + " H:" + round(h1,1) + " M:" + round(slope, 3).
-    set dt to h1 / slope.
-    set h to h1.
-    set t to t1.
-  }
-  // print "DT: " + round(dt, 1) + " T:" + round(t, 1) + " H:" + round(h,1).
-  return t.
+  local t_pe is ship:orbit:eta:periapsis.
+  if above_terrain(0) <= 0 { return 0. }
+  if above_terrain(t_pe) >= 0 { return -1. }
+  return bisect(above_terrain@, 0, t_pe, 0.1).
 }
 
 function landing_site {

@@ -124,9 +124,13 @@ until ship:status = "LANDED" or ship:status = "SPLASHED" {
    local kep_lng to "".
    if periapsis <= 0 {
      local t_land to landing_time().
-     local site to landing_site(t_land).
-     set kep_lng to round(site:lng, 3).
-     print "Landing in " + floor(t_land / 60) + ":" + floor(mod(t_land, 60)) + " at (" + round(site:lat,3) + "º, " + round(site:lng, 3) + "º)." at (1,20).
+     if t_land >= 0 {
+       local site to landing_site(t_land).
+       set kep_lng to round(site:lng, 3).
+       print "Landing in " + floor(t_land / 60) + ":" + floor(mod(t_land, 60)) + " at (" + round(site:lat,3) + "º, " + round(site:lng, 3) + "º)." at (1,20).
+     } else {
+       print "No terrain crossing before periapsis.              " at (1,20).
+     }
    }
    print "Air pressure: " + round(ship:body:atm:altitudepressure(ship:altitude),4) at (1,19).
    if time:seconds - t_logged >= 1 {
