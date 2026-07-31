@@ -64,6 +64,7 @@
 
 runoncepath("aero").   // pitch_angle(), bank_angle(), angle_of_ascent(), dynamic_pressure()
 runoncepath("afbw").   // afbw_release(), afbw_restore()
+runoncepath("columns").  // columns()
 
 // --- tunables -------------------------------------------------------------
 // A window counts as steady only if it spans several short-period cycles, so
@@ -81,7 +82,9 @@ local settle_window_tol is 0.005.
 // the D-term is pitch_kd times pitch rate, so a single shared tolerance
 // would bound pitch rate at settle_window_tol / pitch_kd, moving that bound
 // every time pitch_kd is retuned without anyone deciding to move it. Stated
-// in degrees per second, so it applies unchanged to any airframe.
+// in degrees per second, so it applies unchanged to any airframe. Unflown:
+// the one flight on record was flown before this condition existed, and
+// settled on the bracket alone.
 local settle_pitch_rate_tol is 1.
 // Deflection step below which a pass's correction is not worth writing: it
 // would move the elevator less than the loop's own output resolution. Same
@@ -159,9 +162,10 @@ local roll_pid  is pidloop(roll_kp,  0, roll_kd,  -1, 1).
 // it and afbw_release() changes who owns that axis at t=0. timeout is 1 on
 // the row where a pass's settle window ran out before the elevator steadied.
 // win is the current bracket width (win_max - win_min): live on settle rows,
-// 0 on release rows -- what a timed-out pass was still closing on. dwin is
-// its D-term counterpart: the window's peak abs(pitch_pid:dterm) so far,
-// live on settle rows, 0 on release rows. afbw is whether AFBW reads enabled
+// 0 on release rows -- what a timed-out pass was still closing on. dterm is
+// its counterpart for the loop's derivative term: the window's peak
+// abs(pitch_pid:dterm) so far, which is pitch_kd times the pitch rate, live
+// on settle rows and 0 on release rows. afbw is whether AFBW reads enabled
 // at that instant, logged every row because the setup-time refusal only
 // guards against AFBW already being back on, not against it returning
 // mid-run.
@@ -171,45 +175,15 @@ local roll_pid  is pidloop(roll_kp,  0, roll_kd,  -1, 1).
 // measurement is decided on.
 local col_names is list("t", "phase", "pass", "pitch", "gamma", "aoa",
                         "elev", "trim", "bank", "tas", "q", "alt", "thr",
-                        "timeout", "win", "dwin", "afbw").
+                        "timeout", "win", "dterm", "afbw").
 local col_width is list(8, 8, 5, 7, 7, 6, 7, 7, 7, 7, 9, 8, 6, 8, 7, 7, 6).
-
-function padded {
-  parameter text, width.
-  local out is "" + text.
-  until out:length >= width { set out to " " + out. }
-  return out.
-}
-
-function columns {
-  parameter values, widths.
-  local line is "".
-  local i is 0.
-  until i >= values:length {
-    set line to line + padded(values[i], widths[i]).
-    set i to i + 1.
-  }
-  return line.
-}
-
-function commas {
-  parameter values.
-  local line is "".
-  local i is 0.
-  until i >= values:length {
-    if i > 0 { set line to line + ",". }
-    set line to line + values[i].
-    set i to i + 1.
-  }
-  return line.
-}
 
 // Timestamped so a second run this session does not erase the first one's
 // only record (notes/level-flight-tuning.md logs this as a known cost).
 local flightlog is "autotrim_" + round(time:seconds) + ".csv".
 
 function log_row {
-  parameter now, phase, pass_no, elev, pass_timed_out, win_width, dwin_peak.
+  parameter now, phase, pass_no, elev, pass_timed_out, win_width, dterm_peak.
   local pitch_ is pitch_angle().
   local gamma  is angle_of_ascent().
   local timeout_flag is 0.
@@ -233,13 +207,23 @@ function log_row {
                     round(throttle, 3),
                     timeout_flag,
                     round(win_width, 4),
-                    round(dwin_peak, 4),
+                    round(dterm_peak, 4),
                     afbw_on).
-  log commas(row) to flightlog.
+  log row:join(",") to flightlog.
   print columns(row, col_width).
 }
 
 // --- setup ----------------------------------------------------------------
+// KSP's abort action group is a toggle, and every loop below ends when it
+// reads true. A run stopped with it therefore leaves it set, so the next run
+// would end on its first tick with nothing measured. Clear it, and say so: a
+// script that silently unsets an action group its pilot set is harder to
+// reason about than one that announces it.
+if abort {
+  print "autotrim: abort was latched from an earlier run; clearing it.".
+  set abort to false.
+}
+
 // AFBW has to be off for the whole run, not just the passes: during a RELEASE
 // window the airframe is meant to be flown by trim alone, and a stick still on
 // the axis would be answering instead. If it is still enabled after the
@@ -277,9 +261,8 @@ local settings is "# autotrim  settle_window " + settle_window
     + "  trim0 " + round(trim0, 4)
     + "  afbw_released " + afbw_released
     + "  afbw_stuck " + afbw_stuck.
-if exists(flightlog) { deletepath(flightlog). }
 log settings to flightlog.
-log commas(col_names) to flightlog.
+log col_names:join(",") to flightlog.
 
 print "autotrim: measuring the deflection this craft needs.".
 print settings.
@@ -337,7 +320,7 @@ until stop_reason <> "" or pass_no >= max_pass {
   local win_start is t0.
   local win_min   is 1e9.
   local win_max   is -1e9.
-  local win_dmax  is 0.
+  local win_dterm_max  is 0.
   local elev      is 0.
   local settled   is false.
   local pass_timed_out is false.
@@ -356,16 +339,16 @@ until stop_reason <> "" or pass_no >= max_pass {
     local p_term is pitch_kp * (pitch_pid:setpoint - pitch_).
     set win_min to min(win_min, p_term).
     set win_max to max(win_max, p_term).
-    set win_dmax to max(win_dmax, abs(pitch_pid:dterm)).
+    set win_dterm_max to max(win_dterm_max, abs(pitch_pid:dterm)).
     if now - win_start >= settle_window {
       if win_max - win_min < settle_window_tol
-          and win_dmax < settle_pitch_rate_tol * pitch_kd {
+          and win_dterm_max < settle_pitch_rate_tol * pitch_kd {
         set settled to true.
       } else {
         set win_start to now.
         set win_min to p_term.
         set win_max to p_term.
-        set win_dmax to abs(pitch_pid:dterm).
+        set win_dterm_max to abs(pitch_pid:dterm).
       }
     }
     if not settled and now - t0 >= settle_timeout {
@@ -374,7 +357,7 @@ until stop_reason <> "" or pass_no >= max_pass {
     }
 
     if now - last_row >= 1 {
-      log_row(now, "settle", pass_no, elev, false, win_max - win_min, win_dmax).
+      log_row(now, "settle", pass_no, elev, false, win_max - win_min, win_dterm_max).
       set last_row to now.
     }
     wait 0.
@@ -388,7 +371,7 @@ until stop_reason <> "" or pass_no >= max_pass {
     local gamma_settle is angle_of_ascent().
     local settle_phase is "SETTLE".
     if pass_timed_out { set settle_phase to "TIMEOUT". }
-    log_row(time:seconds, settle_phase, pass_no, d_trim, pass_timed_out, win_max - win_min, win_dmax).
+    log_row(time:seconds, settle_phase, pass_no, d_trim, pass_timed_out, win_max - win_min, win_dterm_max).
     // A timed-out window can hold as little as one sample of a still-moving
     // elevator -- not a measurement, so it never enters the printed sequence.
     if not pass_timed_out {
@@ -525,12 +508,12 @@ if stop_reason = "converged" {
 local result is "# result  stop_reason " + stop_reason
     + "  passes " + pass_no
     + "  trim " + round(ship:control:pilotpitchtrim, 4)
-    + "  deflection_per_pass " + commas(history).
+    + "  deflection_per_pass " + history:join(",").
 log result to flightlog.
 
 print "autotrim: " + outcome.
 print "  pilotpitchtrim " + round(ship:control:pilotpitchtrim, 4).
-print "  deflection per pass " + commas(history).
+print "  deflection per pass " + history:join(",").
 print "  a sequence that shrinks while dynamic pressure is rising has the".
 print "  same shape as a zero-authority axis would in that same rising-q".
 print "  run (see the q and alt columns): required deflection falls with q".
