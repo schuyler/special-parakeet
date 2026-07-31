@@ -235,6 +235,16 @@ if addons:available("afbw") {
   set afbw_stuck to addons:afbw:enabled.
 }
 
+// SAS has to be off for the same reason, and the consequence here is worse
+// than contention. A RELEASE window measures whether trim alone holds the
+// nose; SAS holds the nose too, by writing the elevator this script has just
+// let go of. A run flown with SAS on would show gamma flat across every
+// release window and report that trim has authority, whether or not it does --
+// the one answer the run exists to produce, and no way to tell it from the
+// real one afterward. Logged in the settings line so a CSV says which it was.
+local sas_was_on is sas.
+if sas_was_on { set sas to false. }
+
 // Entry trim: restored if the run ends in an unsafe stop (see header). trim
 // is the running accumulator written to pilotpitchtrim each pass.
 local trim0 is ship:control:pilotpitchtrim.
@@ -260,7 +270,8 @@ local settings is "# autotrim  settle_window " + settle_window
     + "  roll_pid " + roll_kp + " 0 " + roll_kd
     + "  trim0 " + round(trim0, 4)
     + "  afbw_released " + afbw_released
-    + "  afbw_stuck " + afbw_stuck.
+    + "  afbw_stuck " + afbw_stuck
+    + "  sas_was_on " + sas_was_on.
 log settings to flightlog.
 log col_names:join(",") to flightlog.
 
@@ -470,6 +481,7 @@ if unsafe_stop {
   set ship:control:pilotpitchtrim to trim0.
 }
 afbw_restore(afbw_released).
+if sas_was_on { set sas to true. }
 
 local outcome is "".
 if stop_reason = "converged" {

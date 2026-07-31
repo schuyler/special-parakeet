@@ -149,6 +149,13 @@ if abort {
 // the variable that reads it back.
 local afbw_released is afbw_release().
 
+// SAS holds an attitude of its own by writing the same axes this script writes,
+// so the two fight, and SAS wins: the elevator saturates while the nose does
+// not move. Switched off for the run, and handed back only if this script was
+// what took it, so a pilot who had it off keeps it off.
+local sas_was_on is sas.
+if sas_was_on { set sas to false. }
+
 local target_alt is ship:altitude.        // capture present altitude (ASL)
 set alt_pid:setpoint  to target_alt.
 set roll_pid:setpoint to 0.               // wings level
@@ -177,7 +184,8 @@ local settings is "# target_alt " + round(target_alt) + " m ASL"
     + "  hold_throttle " + hold_throttle
     + "  cruise_throttle " + cruise_throttle
     + "  hold_wings_level " + hold_wings_level
-    + "  afbw_released " + afbw_released.
+    + "  afbw_released " + afbw_released
+    + "  sas_was_on " + sas_was_on.
 local gains is "# gains (kp ki kd)  alt " + alt_kp + " " + alt_ki + " " + alt_kd
     + "  pitch " + pitch_kp + " " + pitch_ki + " " + pitch_kd
     + "  roll " + roll_kp + " " + roll_ki + " " + roll_kd.
@@ -270,4 +278,5 @@ set ship:control:pitch to 0.
 set ship:control:roll  to 0.
 set ship:control:neutralize to true.
 afbw_restore(afbw_released).
+if sas_was_on { set sas to true. }
 print "level_flight: released.".
