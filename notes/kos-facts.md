@@ -48,3 +48,50 @@ re-litigate these; if one turns out to be wrong, fix it here.*
   across the whole box (equal to `EXTENTS * 2`), expressed in the box's own reference
   frame, so its `:mag` is a frame-independent diagonal length
   (ksp-kos.github.io/KOS/structures/vessels/bounds.html, verified 2026-07-27).
+- **Not writing a raw control axis is not releasing it.** `SHIP:CONTROL` belongs to the
+  vessel, not the program, so an axis keeps whatever was last written into it — including
+  by an earlier run — and kOS goes on applying that value to any script holding raw
+  control. A `mainthrottle` of 0.5 left by a previous run still reached the engines of a
+  script that had stopped writing the axis. `SET SHIP:CONTROL:NEUTRALIZE TO TRUE` is what
+  releases; writing zero is a command, not a release
+  (ksp-kos.github.io/KOS/commands/flight/raw.html).
+- **`and` short-circuits.** "kerboscript doesn't bother calculating the righthand side once
+  the lefthand side is false", so `if i >= 2 and list[i-2] …` is safe on the first pass
+  (ksp-kos.github.io/KOS/language/features.html, read 2026-07-30). Pre-1.0 builds did not,
+  so don't make it load-bearing where a nested `if` costs nothing.
+- **Ask the addon *list* whether an addon is available, not the addon.** `ADDONS:AVAILABLE("X")`
+  returns false for an unregistered id; `ADDONS:X:AVAILABLE` **raises**, because `ADDONS:X`
+  is itself a suffix that only exists for addons kOS has registered. Both suffixes exist —
+  the base `Addon` class registers `AVAILABLE` on every addon — but only the list form is
+  safe when the addon's own DLL may be absent.
+- **`PIDLoop` differentiates the *measurement*, not the error**: `dTerm = -ChangeRate * Kd`
+  where `ChangeRate` is `(input − last input) / dt`. So a moving setpoint never enters the
+  derivative path, and `DTERM` reads as `Kd` times the rate of the measured quantity.
+  `MAXOUTPUT`/`MINOUTPUT` are the anti-windup mechanism — kOS adjusts `ITERM` when the
+  output saturates. `ITERM` is **read-only**, so an integrator cannot be seeded for a
+  bumpless handover; `RESET()` clears `ERRORSUM`, `ITERM` and `LASTSAMPLETIME`
+  (ksp-kos.github.io/KOS/structures/misc/pidloop.html, read 2026-07-30).
+- **`dynamic_pressure()` in `reference/original/aero.ks` returns kPa, not Pa**, because
+  `air_density()` divides a pressure already converted with `constant:atmtokpa` and so
+  returns kg/L — 1.225e-3 at sea level. kOS also supplies `SHIP:Q` directly (sea-level
+  Kerbin atmospheres; multiply by `ATMtokPa`), which `reentry.ks` already logs. A `q`
+  column taken from `aero.ks` is our own model read back, not an independent witness.
+- **Disabling AFBW does not release the throttle.** Its `rightClickDisabled` flag guards
+  only the joystick-polling loop; `UpdateFlightProperties` runs unguarded and applies a
+  latched throttle offset additively as `mainThrottle = clamp(commanded + latch, 0, 1)`,
+  and `ZeroOutFlightProperties` clears the rotational axes' value but only the throttle's
+  velocity and acceleration. Measured across three flights commanding 0.5: 0.975, 1.000
+  and 0.989, the last with AFBW confirmed switched off by the script. The kOS-AFBW bridge
+  now clears the latch inside its `ENABLED` setter, and only on a write — so `afbw.ks`
+  writes `ENABLED` unconditionally rather than skipping when it already reads false.
+- **Trim goes through `ship:control:pilotpitchtrim`, not `ship:control:pitchtrim`.** The
+  raw-control one "has no real effect and is just here for completeness" — KSP reads trim
+  only off the *pilot's* control structure, never an autopilot's. The pilot ones are
+  settable, scalar [-1,1], and unlike `pilotpitch` are explicitly meant for autopilot use.
+  Trim written to `pilotpitchtrim` **survives `NEUTRALIZE` and reaches the surfaces**:
+  flown 2026-07-30 (`autotrim_82920.csv`), where releasing the elevator to zero left the
+  nose held and `gamma` flat, −2.33 to −2.26 across a 3 s window, with the `trim` column
+  reading back the written 0.118 on every row. Whether trim also acts while a script is
+  *actively writing* raw `ship:control:pitch` is still untested — that flight neutralized
+  the raw axes first, which is exactly the case it does not cover
+  (ksp-kos.github.io/KOS/commands/flight/raw.html and .../pilot.html, read 2026-07-30).
