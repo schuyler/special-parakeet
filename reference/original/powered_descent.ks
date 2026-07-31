@@ -236,8 +236,10 @@ function solve_ignition {
 
 // === FLIGHT RECORDER ===
 // One CSV row per second from the powered phases. Lines beginning '#' are the
-// planning numbers the flight is judged against.
-local flightlog is "flight_log.csv".
+// planning numbers the flight is judged against. The name carries the mission
+// time the run began, so a descent's only record is not the next descent's to
+// overwrite.
+local flightlog is "flight_log_" + round(time:seconds) + ".csv".
 
 // zem: the position miss a pure coast would book at the virtual gate —
 // the law's own error measure, zero when the profile is converged. dem:
@@ -282,7 +284,6 @@ lock steering to srfretrograde.
 // supplied — the one line that separates a plan that missed from a burn
 // that delivered it wrong (notes/node-delivery-window.md).
 local t_pdi is time + eta:periapsis.
-if exists(flightlog) { deletepath(flightlog). }
 log "# target " + round(target_lat, 4) + " " + round(target_lng, 4)
     + "  terrain " + round(tgt:terrainheight) + " m" to flightlog.
 local pe_lng is geoposition_at(t_pdi, ship:orbit):lng.
