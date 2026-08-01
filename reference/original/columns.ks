@@ -22,3 +22,20 @@ function columns {
   }
   return line.
 }
+
+// Select a subset of a list's elements by index, so a printed row can leave
+// columns out without ever disagreeing with the CSV row it came from --
+// same values, same names, same widths, fewer of them. It lives here rather
+// than in a caller because it is the second half of the one-row-two-ways
+// idea above: a console narrower than the full row is the normal case, not
+// one script's problem.
+function subset {
+  parameter lst, idx.
+  local out is list().
+  local i is 0.
+  until i >= idx:length {
+    out:add(lst[idx[i]]).
+    set i to i + 1.
+  }
+  return out.
+}

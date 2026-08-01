@@ -23,21 +23,7 @@
 runoncepath("aero").   // pitch_angle(), bank_angle(), angle_of_ascent(),
                        // heading_error(), ground_distance(), dynamic_pressure()
 runoncepath("afbw").   // afbw_release(), afbw_restore(), afbw_throttle_release_bound()
-runoncepath("columns").  // columns()
-
-// Select a subset of a list's elements by index, so a printed row can leave
-// columns out without ever disagreeing with the CSV row it came from --
-// same values, same names, same widths, fewer of them.
-function subset {
-  parameter lst, idx.
-  local out is list().
-  local i is 0.
-  until i >= idx:length {
-    out:add(lst[idx[i]]).
-    set i to i + 1.
-  }
-  return out.
-}
+runoncepath("columns").  // columns(), subset()
 
 // --- the route ------------------------------------------------------------
 // Replace with your own coordinates: latlng(latitude, longitude).
