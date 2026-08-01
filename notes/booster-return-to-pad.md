@@ -2,11 +2,17 @@
 
 *The design register for `reference/original/boostback.ks`: a spent first stage flips
 downrange, burns back toward the space centre on what is left in its tanks, and lands on
-parachutes. Companions: `reference/original/reentry.ks` and its `entry_flight.csv` (the
-other recorder that logs two impact predictors side by side, and the script that inherits
-the `landing_site` fix below), `entry-s-curve.md` (range control inside the atmosphere,
-which this script does not attempt), `kos-facts.md` (CHUTESSAFE, and the rotation term
-`landing_site` was missing).*
+parachutes. Companions: `ballistic-targeting.md` (the loop itself, which now lives in
+`reference/original/targeting.ks` and is shared with `ballistic_hop.ks` — read it for the
+survey, the drag correction, the taper and the closed forms), `reference/original/reentry.ks`
+and its `entry_flight.csv` (the other recorder that logs two impact predictors side by side,
+and the script that inherits the `landing_site` fix below), `entry-s-curve.md` (range control
+inside the atmosphere, which this script does not attempt), `kos-facts.md` (CHUTESSAFE, and
+the rotation term `landing_site` was missing).*
+
+*What is left in `boostback.ks` after the loop moved out is everything the loop deliberately
+does not own: the flat burn attitude, the vehicle's own reasons for stopping, and the
+descent. Sections below that describe the loop describe `targeting.ks`.*
 
 **Nothing in this register has been flown.** Every tunable in the script says so in its own
 comment, and the signatures below are predictions, not results. The file is at step 3 of the
@@ -237,6 +243,11 @@ SETTLE row's `d_kep` — where the booster was going to land before anything was
 - **`compass_for` now lives in `aero.ks`, and `reentry.ks` still carries its own copy.**
   Folding that one in is behaviour-identical but touches a working entry script, so it
   waits for a flight that would witness it.
+- **The pilot's abort ends the burn but not the parachutes.** An abort hands the controls
+  back and stops the boost; `CHUTESSAFE` goes on being asked for every second, and the hard
+  deploy at `alt_release` is tracked on its own flag so an abort high up cannot consume it.
+  That is a deliberate choice about whose job the canopies are, and a pilot who wants them
+  held has no way to say so.
 - **Scope, standing:** Kerbin, an easterly launch, a booster that separates downrange and
   above `alt_floor`. The geometry is general — nothing in the loop assumes a direction —
   but nothing off that profile has been thought about.

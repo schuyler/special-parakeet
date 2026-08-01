@@ -4,21 +4,21 @@
 // The stage separates downrange on a suborbital arc with fuel still in the
 // tanks. Left alone it comes down where the arc says, tens or hundreds of
 // kilometres out, and recovers a fraction of what it cost; the nearer the
-// space centre it lands, the more of that cost comes back. So the whole
-// program is a closed loop on one number -- where the current trajectory
-// says the booster meets the ground, and how far that is from the target.
+// space centre it lands, the more of that cost comes back.
 //
-// The loop is clean because a coasting ballistic arc's impact point does
-// not move. It is an invariant of the orbit, so every metre the miss
-// closes was bought by thrust, and the measured closing rate is a direct
-// reading of what the throttle is worth. That is what sizes the taper.
+// The loop that flies it is targeting.ks, which this script shares with
+// ballistic_hop.ks: burn along the horizontal miss until the predicted
+// impact reaches the target. What this file owns is everything the loop
+// deliberately does not -- the attitude the burn is flown at, which for a
+// booster already lofted by its own ascent is flat; the vehicle's reasons
+// for stopping; and the descent.
 //
 // Four phases:
 //   1. SETTLE -- separation transient out, RCS on, engines lit if the
 //      separation left them dark.
-//   2. BOOST  -- flip, then burn along the horizontal miss until the
-//      predicted impact reaches the target, the tanks run dry, or the
-//      floor is met. Whichever comes first, the descent still flies.
+//   2. BOOST  -- flip, then burn until the loop says the miss is gone, the
+//      tanks run dry, or the floor is met. Whichever comes first, the
+//      descent still flies.
 //   3. ENTRY  -- engine off, surface-retrograde hold, parachutes asked
 //      for once a second from the atmospheric interface down.
 //   4. DOWN   -- the distance the recovery is paid on.
@@ -34,8 +34,11 @@
 clearscreen.
 print "=== BOOSTBACK ===".
 
-run "common".   // landing_time, landing_site, burn_duration, steering_aligned_to
-run "aero".     // compass_for, ground_distance
+runoncepath("common").     // landing_time, landing_site, burn_duration
+runoncepath("aero").       // compass_for, ground_distance
+runoncepath("afbw").       // afbw_release(), afbw_restore()
+runoncepath("columns").    // columns(), subset()
+runoncepath("targeting").  // targeting_new() and the loop
 
 // The target. KSC's launchpad, because that is where a booster launched
 // from and stock recovery pays on distance from the space centre. Pass a
@@ -78,11 +81,7 @@ parameter align_bar is 10.
 // burn. Unflown.
 parameter t_taper is 2.
 
-// tau_bias: seconds over which the drag correction is averaged. The
-// correction belongs to the vehicle and the arc, which change over the
-// whole burn, while Trajectories recomputes on its own clock and its
-// answer steps. Filtering keeps the fast loop on the lag-free predictor
-// and takes only the slow correction from the addon. Unflown.
+// tau_bias: seconds over which the drag correction is averaged. Unflown.
 parameter tau_bias is 5.
 
 // dv_reserve: delta-v held back from the boostback, m/s. Zero: the landing
@@ -110,6 +109,7 @@ parameter alt_release is 2500.
 parameter t_settle is 3.
 
 local tgt is body:geopositionlatlng(target_lat, target_lng).
+local tk is targeting_new(tgt, miss_bar, t_taper, tau_bias, use_tr, range_bias).
 local ipu_prior is config:ipu.
 // Raised for the impact solve: landing_time bisects a terrain crossing
 // thirteen levels deep every cycle, inside a burn where a second of
@@ -143,123 +143,75 @@ if ship:modulesnamed("ModuleParachute"):length = 0 {
       + "but nothing will slow it at the bottom.".
 }
 
+// KSP's abort action group is a toggle, and the loops below read it as the
+// pilot's stop. A run ended with it therefore leaves it set, so the next
+// run would stop on its first tick. Clear it, and say so.
+if abort {
+  print "boostback: abort was latched from an earlier run; clearing it.".
+  set abort to false.
+}
+
+// AFBW writes the control axes every tick and wins the arbitration against
+// kOS, throttle included: a script that locks throttle while AFBW holds it
+// reads its own commanded value back while the vessel runs something else.
+// That would not merely fly the burn wrong, it would corrupt the loop --
+// `close` is the measured closing rate divided by the throttle believed to
+// have produced it, so a throttle that is a fiction makes the taper a
+// fiction (afbw.ks, notes/kos-facts.md).
+local afbw_released is afbw_release().
+
 // === FLIGHT RECORDER ===
-// One CSV row per second, from settle to touchdown. Lines beginning '#'
-// are what the flight is judged against. The columns serve three
-// questions:
+// One row per second from settle to touchdown, rendered two ways from one
+// list of values so the console and the CSV cannot drift apart. Lines
+// beginning '#' are what the flight is judged against. The columns serve
+// three questions:
 //  - miss, close and thr against each other: did the closing rate the
 //    taper is sized from hold steady, and did the cut land on the bar;
 //  - d_kep against d_tr against the final dist: which predictor described
 //    this booster's descent, and by how much drag moved the impact. This
 //    is the pair that decides whether the drag correction is worth its
 //    complexity, and it is the same comparison entry_flight.csv makes;
-//  - steer_err and q: whether the airframe held the commanded attitude
-//    through the burn and the entry, and where in the envelope it did not.
+//  - serr and q: whether the airframe held the commanded attitude through
+//    the burn and the entry, and where in the envelope it did not.
 // dist is the number the recovery is paid on: the ship's own ground
 // distance from the target, which at the last row is the result.
+local col_names is list("t", "phase", "alt", "speed", "vspd", "q", "miss",
+                        "d_kep", "d_tr", "bias", "close", "thr", "serr",
+                        "mass", "dv", "dist", "lat", "lng").
+local col_width is list(9, 7, 7, 8, 7, 9, 9, 9, 9, 7, 8, 6, 6, 7, 7, 9, 9, 9).
+// The console is narrower than the full row. These are the columns that
+// say whether the loop is converging and the craft is pointing where it
+// was told; the CSV keeps every column regardless.
+local console_idx is list(0, 1, 2, 3, 6, 10, 11, 12, 15).
 local flightlog is "boostback_" + round(time:seconds) + ".csv".
 
-// === PREDICTOR STATE ===
-// cmd is the commanded burn direction, horizontal, unit. It seeds pointing
-// straight at the target so the flip has something to turn to before the
-// first survey lands.
 local phase is "SETTLE".
 local thr is 0.
-local cmd is vxcl(up:vector, tgt:position):normalized.
-local miss is -1.
-local miss_rate is 0.
-local closing_full is 0.
-local bias is v(0, 0, 0).
-local d_kep is "".
-local d_tr is "".
-
-// One cycle's reading of both predictors. Sets the state above and returns
-// false when the arc has no terrain crossing to aim at.
-//
-// steer is false past the burn, where the miss is still worth logging but
-// there is no longer a burn direction to command from it.
-function survey {
-  parameter dt.
-  parameter steer is true.
-  set d_kep to "".
-  set d_tr to "".
-
-  // Trajectories is asked through the addon list, not through ADDONS:TR,
-  // which raises for an addon kOS has not registered (notes/kos-facts.md).
-  local tr_ok is false.
-  local tr_pos is v(0, 0, 0).
-  if use_tr and addons:available("TR") and addons:tr:hasimpact {
-    local tr_geo is addons:tr:impactpos.
-    set tr_ok to true.
-    set tr_pos to tr_geo:position.
-    set d_tr to round(ground_distance(tgt, tr_geo)).
-  }
-
-  local t_land is landing_time().
-  if t_land < 0 { return false. }
-  local kep is landing_site(t_land).
-  set d_kep to round(ground_distance(tgt, kep)).
-
-  if tr_ok {
-    // The drag correction: the displacement from the modelled impact to
-    // the drag-free one -- how far past the real landing an arc with no
-    // air in it carries.
-    set bias to bias + ((kep:position - tr_pos) - bias) * min(1, dt / tau_bias).
-  }
-
-  // Aim at the target pushed out by that correction, so that driving the
-  // drag-free impact onto the aim point puts the real one on the target.
-  local aim is tgt:position + bias.
-  if range_bias <> 0 {
-    set aim to aim + vxcl(up:vector, tgt:position):normalized * range_bias.
-  }
-
-  // The miss, taken in the ship's own horizontal plane: its direction is
-  // the burn direction wanted, and over the distances in play its length
-  // and the great-circle distance agree to parts in ten thousand. d_kep
-  // alongside is the honest great-circle number for the record.
-  local m_vec is vxcl(up:vector, aim - kep:position).
-  local m_new is m_vec:mag.
-  if steer and m_new > 0 { set cmd to m_vec:normalized. }
-
-  if miss >= 0 {
-    // Filtered over a second: several control cycles, short against the
-    // burn and long against the step the bisection's own tolerance puts
-    // in the crossing time.
-    set miss_rate to miss_rate + ((m_new - miss) / dt - miss_rate) * min(1, dt).
-  }
-  set miss to m_new.
-
-  // What the miss closes at per unit throttle. Dividing by the throttle
-  // that produced it is what stops the taper chasing its own tail: a rate
-  // measured at half throttle predicts twice that at full, so the throttle
-  // commanded below is a fixed point rather than a decaying one.
-  if thr > 0.1 and miss_rate < 0 {
-    set closing_full to -miss_rate / thr.
-  }
-  return true.
-}
-
-// Full throttle until the miss is within t_taper seconds of closing at
-// full throttle, then linearly down, so the cut lands on the bar. Shut
-// while the nose is outside align_bar, which makes the alignment wait a
-// property of the loop instead of a phase of its own: the burn simply does
-// not run until the flip is done, and stops again if the craft loses it.
-function throttle_for {
-  if vang(cmd, ship:facing:vector) > align_bar { return 0. }
-  if closing_full <= 0 { return 1. }
-  return max(0, min(1, miss / (closing_full * t_taper))).
-}
+local rows is 0.
 
 // One steering lock for the whole flight, switched by phase. Locking once
 // at file scope rather than per phase keeps every lock expression in the
-// scope it was declared in, and it means the settle wait is productive:
+// scope it was declared in, and it makes the settle wait productive:
 // surface retrograde is within a few degrees of the boostback direction on
 // a mostly-horizontal arc, so the flip is half done before BOOST opens the
-// throttle. The roll reference is the craft's own top vector, so the hold
-// commands no roll for the reaction wheels to fight.
+// throttle.
+//
+// The boostback burn is flat -- heading(azimuth, 0). A booster arrives at
+// separation already lofted by the ascent it just flew, so the arc it
+// needs is bought entirely by reversing horizontal velocity, and at these
+// speeds the impact point's sensitivity to horizontal delta-v dominates
+// its sensitivity to vertical. A vertical component would buy range too,
+// by lengthening the fall, but at the price of a higher, faster, hotter
+// entry. This is exactly the choice ballistic_hop.ks makes differently.
+//
+// Retrograde points the *control point's* nose backward along the flight
+// path, so a booster controlled from its upper end falls engine-first,
+// mass ahead of drag, which is the stable way round. Controlled from the
+// other end it flies the unstable way, and no steering command fixes that
+// -- serr is the column that says which happened. The roll reference is
+// the craft's own top vector, so the hold commands no roll to fight.
 function steer_dir {
-  if phase = "BOOST" { return heading(compass_for(cmd), 0). }
+  if phase = "BOOST" { return heading(compass_for(tk["cmd"]), 0). }
   return lookdirup(-ship:velocity:surface, ship:facing:topvector).
 }
 
@@ -267,28 +219,32 @@ function log_state {
   // The attitude each phase is judged against: the burn direction while
   // there is a burn, surface retrograde after it.
   local ref is -ship:velocity:surface.
-  if phase = "BOOST" { set ref to cmd. }
-  // Empty until the first survey lands, the same way d_kep and d_tr go
-  // empty when their predictor has no answer.
-  local miss_col is "".
-  if miss >= 0 { set miss_col to round(miss). }
-  log round(time:seconds, 1) + "," + phase + ","
-      + round(ship:altitude) + ","
-      + round(ship:velocity:surface:mag, 1) + ","
-      + round(ship:verticalspeed, 1) + ","
-      + round(ship:q * constant:atmtokpa, 4) + ","
-      + miss_col + ","
-      + d_kep + "," + d_tr + ","
-      + round(bias:mag) + ","
-      + round(closing_full, 1) + ","
-      + round(thr, 3) + ","
-      + round(vang(ref, ship:facing:vector), 1) + ","
-      + round(ship:mass, 3) + ","
-      + round(ship:deltav:current, 1) + ","
-      + round(ground_distance(tgt)) + ","
-      + round(ship:geoposition:lat, 4) + ","
-      + round(ship:geoposition:lng, 4)
-      to flightlog.
+  if phase = "BOOST" { set ref to tk["cmd"]. }
+  local row is list(round(time:seconds, 1),
+                    phase,
+                    round(ship:altitude),
+                    round(ship:velocity:surface:mag, 1),
+                    round(ship:verticalspeed, 1),
+                    round(ship:q * constant:atmtokpa, 4),
+                    targeting_miss_col(tk),
+                    tk["d_kep"],
+                    tk["d_tr"],
+                    round(tk["bias"]:mag),
+                    round(tk["close"], 1),
+                    round(thr, 3),
+                    round(vang(ref, ship:facing:vector), 1),
+                    round(ship:mass, 3),
+                    round(ship:deltav:current, 1),
+                    round(ground_distance(tgt)),
+                    round(ship:geoposition:lat, 4),
+                    round(ship:geoposition:lng, 4)).
+  log row:join(",") to flightlog.
+  // reprint the header before it scrolls out of reach
+  if mod(rows, 20) = 0 {
+    print columns(subset(col_names, console_idx), subset(col_width, console_idx)).
+  }
+  print columns(subset(row, console_idx), subset(col_width, console_idx)).
+  set rows to rows + 1.
 }
 
 // === SETTLE ===
@@ -322,15 +278,14 @@ log "# tunables  miss_bar " + miss_bar + "  align_bar " + align_bar
     + "  dv_reserve " + dv_reserve + "  alt_floor " + alt_floor
     + "  alt_release " + alt_release
     + "  use_tr " + use_tr + "  tr_available " + addons:available("TR")
-    + "  range_bias " + range_bias to flightlog.
-log "t,phase,alt,speed,vspd,q,miss,d_kep,d_tr,bias,close,thr,steer_err,mass,dv_rem,dist,lat,lng"
-    to flightlog.
+    + "  range_bias " + range_bias
+    + "  afbw_released " + afbw_released to flightlog.
+log col_names:join(",") to flightlog.
 
 print "Target is " + round(ground_distance(tgt) / 1000, 1) + " km away, "
     + "at " + round(ship:altitude / 1000, 1) + " km and "
     + round(ship:velocity:surface:mag) + " m/s.".
-print "Logging to " + flightlog + ".".
-print "Settling for " + t_settle + " s.".
+print "Logging to " + flightlog + ".  abort (backspace) ends the burn.".
 
 lock steering to steer_dir().
 lock throttle to thr.
@@ -342,11 +297,11 @@ lock throttle to thr.
 local t_prev is time:seconds.
 local t_logged is time:seconds - 1.
 local t_settle_end is time:seconds + t_settle.
-until time:seconds > t_settle_end {
+until time:seconds > t_settle_end or abort {
   if time:seconds - t_logged >= 1 {
     local dt is max(0.02, time:seconds - t_prev).
     set t_prev to time:seconds.
-    survey(dt).
+    targeting_survey(tk, dt, 0).
     log_state().
     set t_logged to time:seconds.
   }
@@ -354,9 +309,9 @@ until time:seconds > t_settle_end {
 }
 
 // === BOOST ===
-// The flip is not a phase of its own: throttle_for holds the throttle shut
-// while the nose is outside align_bar, so the burn starts the moment the
-// turn finishes and stops again if the craft loses the attitude.
+// The flip is not a phase of its own: targeting_throttle holds the
+// throttle shut while the nose is outside align_bar, so the burn starts
+// the moment the turn finishes and stops again if the craft loses it.
 local why is "no live engine".
 local has_thrust is ship:availablethrust > 0.
 // The burn cannot outlast its own propellant. burn_duration prices the
@@ -365,38 +320,39 @@ local has_thrust is ship:availablethrust > 0.
 // flip allowance -- a craft that cannot make the turn in two minutes will
 // not make it.
 local t_boost_end is time:seconds.
-if has_thrust {
+if has_thrust and not abort {
   set t_boost_end to time:seconds
       + 2 * burn_duration(ship:deltav:current) + 120.
   set why to "burn deadline".
   set phase to "BOOST".
-  print "Flipping to " + round(compass_for(cmd)) + " deg and burning.".
+  print "Flipping to " + round(compass_for(tk["cmd"])) + " deg and burning.".
+} else if abort {
+  set why to "pilot abort".
 } else {
   print "No thrust available -- flying the descent only.".
 }
 
-local miss_min is 2 ^ 30.
 local no_impact_s is 0.
-if has_thrust {
+if phase = "BOOST" {
   until false {
     local now is time:seconds.
     local dt is max(0.02, now - t_prev).
     set t_prev to now.
 
-    if survey(dt) {
+    if targeting_survey(tk, dt, thr) {
       set no_impact_s to 0.
-      set thr to throttle_for().
-      if miss < miss_min { set miss_min to miss. }
-      if miss <= miss_bar { set why to "miss inside the bar". break. }
-      // Past its own best by more than the bar: the burn is now making the
-      // landing worse, whatever the predictor thinks it is doing.
-      if miss > miss_min + miss_bar { set why to "miss growing past its best". break. }
+      set thr to targeting_throttle(tk, steer_dir():vector, align_bar).
+      local verdict is targeting_done(tk).
+      if verdict <> "" { set why to verdict. break. }
     } else {
       set thr to 0.
       set no_impact_s to no_impact_s + dt.
+      // A burn that lifted periapsis clear of the terrain has no impact
+      // point to close on, and going on would be steering a stale number.
       if no_impact_s > 2 { set why to "no terrain crossing to aim at". break. }
     }
 
+    if abort { set why to "pilot abort". break. }
     if ship:availablethrust <= 0 { set why to "engine dry". break. }
     if ship:deltav:current <= dv_reserve { set why to "reserve reached". break. }
     if ship:altitude < alt_floor { set why to "below the burn floor". break. }
@@ -404,9 +360,6 @@ if has_thrust {
 
     if now - t_logged >= 1 {
       log_state().
-      print "BOOST miss=" + round(miss) + " thr=" + round(thr, 2)
-          + " dv=" + round(ship:deltav:current) + " err="
-          + round(vang(cmd, ship:facing:vector), 1) + "      " at (0, 8).
       set t_logged to now.
     }
     wait 0.
@@ -418,11 +371,11 @@ unlock throttle.
 set ship:control:pilotmainthrottle to 0.
 
 local miss_text is "unknown".
-if miss >= 0 { set miss_text to round(miss) + " m". }
+if tk["miss"] >= 0 { set miss_text to round(tk["miss"]) + " m". }
 log "# cutoff  " + why + "  miss " + miss_text
-    + "  d_kep " + d_kep + "  d_tr " + d_tr
-    + "  bias " + round(bias:mag)
-    + "  close " + round(closing_full, 1)
+    + "  d_kep " + tk["d_kep"] + "  d_tr " + tk["d_tr"]
+    + "  bias " + round(tk["bias"]:mag)
+    + "  close " + round(tk["close"], 1)
     + "  alt " + round(ship:altitude)
     + "  speed " + round(ship:velocity:surface:mag, 1)
     + "  dv_rem " + round(ship:deltav:current, 1) to flightlog.
@@ -432,16 +385,17 @@ print "Cutoff: " + why + ", miss " + miss_text
 // === ENTRY ===
 // steer_dir now returns surface retrograde: the attitude that puts the
 // most drag in the way -- the shortest, slowest, coolest entry -- and the
-// one the canopies want when they open. Retrograde points the *control
-// point's* nose backward along the flight path, so a booster controlled
-// from its upper end falls engine-first, mass ahead of drag, which is the
-// stable way round. Controlled from the other end it flies the unstable
-// way, and no steering command fixes that -- steer_err is the column that
-// says which happened.
+// one the canopies want when they open.
 set phase to "ENTRY".
 rcs off.
 
+// The pilot's abort and the release altitude do the same thing, so they
+// share a path: steering released, controls neutralised, SAS back on.
+// Arming the parachutes is not part of what is handed back. A pilot who
+// takes the controls still wants the canopies out, and asking CHUTESSAFE
+// cannot open one early, so the loop goes on asking either way.
 local released is false.
+local hard_armed is false.
 local warping is false.
 until ship:status = "LANDED" or ship:status = "SPLASHED" {
   local now is time:seconds.
@@ -454,7 +408,7 @@ until ship:status = "LANDED" or ship:status = "SPLASHED" {
   // because KSP gates each rails rate on altitude, and a booster arc peaks
   // not far above the interface -- asking for a rate the game will not
   // grant there just leaves the warp where it was.
-  if ship:altitude > body:atm:height + 5000 {
+  if ship:altitude > body:atm:height + 5000 and not abort {
     if not warping {
       set warpmode to "rails".
       set warp to 2.
@@ -466,18 +420,26 @@ until ship:status = "LANDED" or ship:status = "SPLASHED" {
     set warping to false.
   }
 
-  if ship:altitude < alt_release and not released {
-    // The backstop, for a parachute module kOS's safe check does not
-    // cover: deploy unconditionally, and hand the airframe back to SAS so
-    // nothing is steering against the canopies.
-    chutes on.
+  // The handback: the release altitude and the pilot's abort do the same
+  // thing, so they share it.
+  if (ship:altitude < alt_release or abort) and not released {
     unlock steering.
     set ship:control:neutralize to true.
     sas on.
     set released to true.
     set phase to "CHUTE".
-    print "Chutes hard-armed, controls handed back at "
-        + round(ship:altitude) + " m.".
+    print "Controls handed back at " + round(ship:altitude) + " m"
+        + (choose " (pilot abort)" if abort else "") + ".".
+  }
+
+  // The hard deploy is a separate flag from the handback, because an abort
+  // high up hands the controls back long before the backstop is due and
+  // must not consume it. It is the backstop for a parachute module kOS's
+  // safe check does not cover; down here the booster is at terminal
+  // velocity in dense air, the condition stock chutes are rated to open in.
+  if ship:altitude < alt_release and not hard_armed {
+    chutes on.
+    set hard_armed to true.
   }
 
   if now - t_logged >= 1 {
@@ -488,11 +450,8 @@ until ship:status = "LANDED" or ship:status = "SPLASHED" {
     if ship:altitude < body:atm:height { set chutessafe to true. }
     local dt is max(0.02, now - t_prev).
     set t_prev to now.
-    survey(dt, false).
+    targeting_survey(tk, dt, 0, false).
     log_state().
-    print phase + " alt=" + round(ship:altitude) + " v="
-        + round(ship:velocity:surface:mag) + " dist="
-        + round(ground_distance(tgt)) + "        " at (0, 9).
     set t_logged to now.
   }
   wait 0.
@@ -511,6 +470,7 @@ unlock steering.
 unlock throttle.
 set ship:control:neutralize to true.
 sas on.
+afbw_restore(afbw_released).
 set config:ipu to ipu_prior.
 
 print "Down " + round(final_dist / 1000, 2) + " km from the target ("
