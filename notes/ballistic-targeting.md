@@ -157,7 +157,10 @@ optional second point, which is what an impact-to-target distance needs.
 
 ## Pre-flight: the signatures
 
-The log is `hop_<t>.csv`, one row per second from WAIT to handoff.
+The log is `hop_<t>.csv`: four rows a second through the boost, one a second through WAIT
+and COAST, one console line a second throughout. Both of the things this script adds to
+boostback's are transients — the taper running its whole length in `t_taper`, and `gamma`
+rotating onto `loft` — and a one-second row would sample neither.
 
 1. **`miss` is flat through WAIT and falls only once `thr` goes above zero.** The invariant,
    same as boostback's. If it drifts while the engine is cold, nothing downstream is sound.

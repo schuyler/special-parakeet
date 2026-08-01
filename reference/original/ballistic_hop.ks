@@ -172,7 +172,11 @@ local col_width is list(9, 7, 7, 8, 7, 7, 7, 7, 9, 9, 9, 9, 8, 6, 6, 7, 10).
 local console_idx is list(0, 1, 2, 3, 5, 6, 7, 9, 13, 16).
 local flightlog is "hop_" + round(time:seconds) + ".csv".
 
+// show false writes the CSV row without printing it, so the burn can be
+// sampled faster than a human can read. Same list, same widths, fewer of
+// the rows on screen.
 function log_state {
+  parameter show is true.
   local ref is -ship:velocity:surface.
   if phase = "BOOST" { set ref to steer_dir():vector. }
   local loft is ballistic_loft(range_angle(tgt)).
@@ -194,6 +198,7 @@ function log_state {
                     round(ship:deltav:current, 1),
                     round(ground_distance(tgt))).
   log row:join(",") to flightlog.
+  if not show { return. }
   if mod(rows, 20) = 0 {
     print columns(subset(col_names, console_idx), subset(col_width, console_idx)).
   }
@@ -248,6 +253,7 @@ print "Logging to " + flightlog + ".  abort (backspace) ends the burn.".
 print "Waiting for ambient pressure below " + p_boost + " atm.".
 local t_prev is time:seconds.
 local t_logged is time:seconds - 1.
+local t_printed is time:seconds - 1.
 until air_pressure() <= p_boost or abort {
   if time:seconds - t_logged >= 1 {
     local dt is max(0.02, time:seconds - t_prev).
@@ -314,8 +320,17 @@ until false {
   if ship:deltav:current <= dv_reserve { set why to "reserve reached". break. }
   if now > t_boost_end { break. }
 
-  if now - t_logged >= 1 {
-    log_state().
+  // Four rows a second through the burn, one line a second on the
+  // console. A second is the right spacing for a coast and far too coarse
+  // for the taper, which runs its whole length in t_taper; and gamma
+  // converging on loft is a transient this script exists to witness, not
+  // a steady state. Two clocks, because a console printing four times a
+  // second is not a console (powered_descent.ks, same pattern, same
+  // reason).
+  if now - t_logged >= 0.25 {
+    local show is now - t_printed >= 1.
+    log_state(show).
+    if show { set t_printed to now. }
     set t_logged to now.
   }
   wait 0.

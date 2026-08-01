@@ -215,7 +215,12 @@ function steer_dir {
   return lookdirup(-ship:velocity:surface, ship:facing:topvector).
 }
 
+// show false writes the CSV row without printing it. The console and the
+// CSV still render the same list through the same widths -- the console
+// just sees fewer of the rows, which is what lets the burn be sampled
+// faster than a human can read.
 function log_state {
+  parameter show is true.
   // The attitude each phase is judged against: the burn direction while
   // there is a burn, surface retrograde after it.
   local ref is -ship:velocity:surface.
@@ -239,6 +244,7 @@ function log_state {
                     round(ship:geoposition:lat, 4),
                     round(ship:geoposition:lng, 4)).
   log row:join(",") to flightlog.
+  if not show { return. }
   // reprint the header before it scrolls out of reach
   if mod(rows, 20) = 0 {
     print columns(subset(col_names, console_idx), subset(col_width, console_idx)).
@@ -296,6 +302,7 @@ lock throttle to thr.
 // leaves cmd pointing the right way when BOOST opens the throttle.
 local t_prev is time:seconds.
 local t_logged is time:seconds - 1.
+local t_printed is time:seconds - 1.
 local t_settle_end is time:seconds + t_settle.
 until time:seconds > t_settle_end or abort {
   if time:seconds - t_logged >= 1 {
@@ -358,8 +365,18 @@ if phase = "BOOST" {
     if ship:altitude < alt_floor { set why to "below the burn floor". break. }
     if now > t_boost_end { break. }
 
-    if now - t_logged >= 1 {
-      log_state().
+    // The burn is sampled four times a second and the console still reads
+    // once. A second is the right row spacing for a coast and far too
+    // coarse for the taper: the throttle comes down over t_taper, two
+    // seconds, so at 1 Hz the whole of the manoeuvre this design is most
+    // likely to have wrong would arrive as two rows. Two clocks rather
+    // than one because a console printing four times a second is not a
+    // console (powered_descent.ks logs its arrest burn the same way, for
+    // the same reason).
+    if now - t_logged >= 0.25 {
+      local show is now - t_printed >= 1.
+      log_state(show).
+      if show { set t_printed to now. }
       set t_logged to now.
     }
     wait 0.

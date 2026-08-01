@@ -201,8 +201,14 @@ less, but the change is unwitnessed there and this register is where that is on 
 
 ## Pre-flight: the signatures
 
-The log is `boostback_<t>.csv`, one row per second from settle to touchdown. What a flight
-has to show, column by column:
+The log is `boostback_<t>.csv`: four rows a second through the burn, one a second either
+side of it, and one console line a second throughout. The burn's rate is not decoration.
+The throttle comes down over `t_taper` — two seconds — so at one row a second the taper
+would arrive as two samples, and the taper is the part of this design most likely to be
+wrong. `powered_descent.ks` splits its clocks the same way and for the same reason: a
+console printing four times a second is not a console.
+
+What a flight has to show, column by column:
 
 1. **`miss` is flat across the SETTLE rows and falls only once `thr` goes above zero.** This
    is the invariant the whole design rests on. If `miss` drifts while the engine is cold,
