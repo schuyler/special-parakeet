@@ -51,15 +51,22 @@ function bank_angle {
   return -arcsin(vdot(ship:facing:starvector, ship:up:vector)).
 }
 
-// Compass heading of the nose, degrees, 0..360 (0 = north, 90 = east).
-// kOS has no ship:heading -- project the nose onto the local horizontal
-// plane and measure its angle from north toward east. east = up x north;
-// kOS's frame is left-handed, so this vcrs order yields +east.
+// Compass azimuth of any vector, degrees, 0..360 (0 = north, 90 = east):
+// project it onto the local horizontal plane and measure its angle from
+// north toward east. east = up x north; kOS's frame is left-handed, so
+// this vcrs order yields +east. Takes a vector rather than reading the
+// nose because a burn direction wants the same conversion the nose does,
+// and heading() wants an azimuth either way.
 // SIGN CHECK: command heading 090 and confirm the nose swings toward east.
-function compass_heading {
+function compass_for {
+  parameter v_.
   local east is vcrs(ship:up:vector, ship:north:vector).
-  return mod(arctan2(vdot(east, ship:facing:forevector),
-                     vdot(ship:north:vector, ship:facing:forevector)) + 360, 360).
+  return mod(arctan2(vdot(east, v_), vdot(ship:north:vector, v_)) + 360, 360).
+}
+
+// Compass heading of the nose, degrees, 0..360. kOS has no ship:heading.
+function compass_heading {
+  return compass_for(ship:facing:forevector).
 }
 
 // Signed heading error to a target bearing, wrapped to [-180, 180] so a
@@ -69,17 +76,21 @@ function heading_error {
   return mod(target_bearing - compass_heading() + 540, 360) - 180.
 }
 
-// Great-circle distance over the ground to a geo coordinate, metres.
+// Great-circle distance over the ground between two geo coordinates,
+// metres, measured from the ship unless a second point is given.
 // GeoCoordinates:DISTANCE is slant range (includes the altitude difference),
 // so it never reaches ~0 from cruise -- useless for arrival tests. Here we
-// take the central angle between the body-center-to-ship and
-// body-center-to-waypoint vectors and multiply by the body radius.
+// take the central angle between the two body-center-to-point vectors and
+// multiply by the body radius. The second point is what a predicted impact
+// needs: the distance that matters there is impact-to-target, and the ship
+// is nowhere near either.
 function ground_distance {
-  parameter geo.   // a GeoCoordinates (e.g. latlng(lat, lng))
-  local center_to_ship is -ship:body:position.
+  parameter geo.                        // a GeoCoordinates (e.g. latlng(lat, lng))
+  parameter from_ is ship:geoposition.  // measure from here
+  local center_to_from is from_:position - ship:body:position.
   local center_to_geo  is geo:position - ship:body:position.
   return ship:body:radius * constant:degtorad
-       * vang(center_to_ship, center_to_geo).
+       * vang(center_to_from, center_to_geo).
 }
 
 function angle_of_ascent {

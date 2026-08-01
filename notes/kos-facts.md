@@ -16,6 +16,14 @@ re-litigate these; if one turns out to be wrong, fix it here.*
   at a 200 s lead and 174 deg at 1200 s.
 - `geoposition_at(t, orbit_, pos)` works for times before now; passing `pos` matches
   letting it recompute.
+- **`BODY:GEOPOSITIONOF` reads a position against the body's orientation *now*.** It has no
+  time argument and cannot: hand it a point t seconds in the future and the longitude that
+  comes back is the one the ground will have turned away from by then, short by
+  `(360/rotationperiod)·t`. Latitude is unaffected — the spin never moves it. On Kerbin the
+  term is 175 m of equator per second, so a three-minute ballistic fall lands 35 km from
+  where the uncorrected read says. Both propagators in this repo now carry the correction:
+  `core/kepler.ks`'s `geoposition_at`, which is handed an orbit, and `common.ks`'s
+  `geoposition_ahead`, which is handed what `positionat` already returned.
 - `body:angularvel` is in **radians**/sec, so `|ω|·r ≡ 2π·r/T`.
 - `geopositionlatlng(lat, lng)` works for arbitrary lat/lng, off-rails.
 - **No body-global maximum-terrain suffix exists.** `TERRAINHEIGHT` is per
@@ -84,6 +92,17 @@ re-litigate these; if one turns out to be wrong, fix it here.*
   and 0.989, the last with AFBW confirmed switched off by the script. The kOS-AFBW bridge
   now clears the latch inside its `ENABLED` setter, and only on a write — so `afbw.ks`
   writes `ENABLED` unconditionally rather than skipping when it already reads false.
+- **`CHUTESSAFE` is safe to ask for repeatedly, and asking is the whole arming policy.** It
+  "deploys all the parachutes than can be safely deployed in the current conditions (only
+  ON command has effect)", so setting it true when nothing can safely deploy is a no-op
+  rather than a torn canopy — which means a descent can simply ask once a second from the
+  atmospheric interface down and never need an altitude or a dynamic-pressure threshold of
+  its own. `CHUTES` is the unconditional form and will deploy into conditions that destroy
+  the canopy. **Do not read `CHUTESSAFE` as "are the chutes out":** it "returns false only
+  if there are disarmed parachutes chutes which may be safely deployed, and true if all
+  safe parachutes are already deployed including any time where there are no safe
+  parachutes" — so it reads true both when everything is deployed and when nothing may be
+  (ksp-kos.github.io/KOS/commands/flight/systems.html, read 2026-08-01).
 - **Trim goes through `ship:control:pilotpitchtrim`, not `ship:control:pitchtrim`.** The
   raw-control one "has no real effect and is just here for completeness" — KSP reads trim
   only off the *pilot's* control structure, never an autopilot's. The pilot ones are

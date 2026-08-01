@@ -191,11 +191,30 @@ function execute_node {
 
 // === LANDING CALCULATION ===
 
+// The geoposition under a future position vector, corrected for the body's
+// rotation between now and then. GEOPOSITIONOF reads a position against the
+// body's orientation *now*, so a point dt seconds ahead comes back at the
+// longitude the ground will have turned away from by then: the body spins
+// east at 360/rotationperiod deg/s, and a fixed inertial direction slides
+// west in body coordinates by exactly that. On Kerbin the term is 175 m of
+// equator per second — 35 km over a three-minute ballistic arc, which is
+// the whole of a return-to-launch-site problem. Same correction, and the
+// same reason, as core/kepler.ks's geoposition_at; that one is handed an
+// orbit to propagate, this one is handed what positionat already returned.
+function geoposition_ahead {
+  parameter pos.
+  parameter dt.
+  local b is ship:body.
+  local geo is b:geopositionof(pos).
+  return b:geopositionlatlng(geo:lat,
+      geo:lng - (360 / b:rotationperiod) * dt).
+}
+
 function time_to_surface {
   parameter t is time:seconds.
   local pos is positionat(ship, t).
   local alt_ is (pos - body:position):mag - body:radius.
-  local h is max(0, alt_ - body:geopositionof(pos):terrainheight).
+  local h is max(0, alt_ - geoposition_ahead(pos, t - time:seconds):terrainheight).
   local surface_v is velocityat(ship, t):surface.
   local up_v to (pos - body:position):normalized.
   local v_ to vdot(surface_v, up_v).
@@ -208,7 +227,7 @@ function above_terrain {
   parameter t.
   local pos is positionat(ship, time:seconds + t).
   local b is ship:body.
-  return b:altitudeof(pos) - b:geopositionof(pos):terrainheight.
+  return b:altitudeof(pos) - geoposition_ahead(pos, t):terrainheight.
 }
 
 // Seconds from now until the drag-free trajectory meets the terrain: 0 if
@@ -230,5 +249,5 @@ function landing_time {
 function landing_site {
    parameter t_land to landing_time().
    local pos to positionat(ship, time:seconds + t_land).
-   return ship:body:geopositionof(pos).
+   return geoposition_ahead(pos, t_land).
 }
