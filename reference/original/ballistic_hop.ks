@@ -76,18 +76,33 @@ parameter tau_bias is 5.
 // with air. Unflown -- q and serr in the log are what would falsify it.
 parameter p_boost is 0.05.
 
-// pitch_max, pitch_min: the band the commanded pitch is held inside,
-// degrees above the horizon. The loft rule alone cannot run away, but the
-// flight-path correction on top of it can, if gamma is far from the loft
-// when the burn starts. The band is what stops a correction becoming a
-// vertical climb or a dive. Unflown.
-parameter pitch_max is 80.
-parameter pitch_min is -20.
+// aoa_max: how far off its own velocity vector the nose may be commanded,
+// degrees.
+//
+// The loft rule cannot run away; the correction on top of it can. The
+// command is pitch = 2*loft - gamma, which is unbounded in gamma, so a
+// burn starting with the velocity far from the loft angle asks for an
+// attitude that has nothing to do with either. Bounding it as an angle off
+// the airflow rather than as a band of absolute pitch is what turns two
+// arbitrary numbers into one physical limit, and it self-scales: the cap
+// rides wherever the velocity vector is instead of sitting at fixed
+// heights above a horizon the vehicle may not be near.
+//
+// The price it caps is cosine. A nose held 30 degrees off its own velocity
+// puts cos(30) = 0.87 of the thrust along the flight path and spends the
+// other 13% turning it -- which is the trade the correction is making, and
+// 13% is a defensible ceiling on it. It bounds the aerodynamic load too,
+// though by design the burn runs where there is little air left to load.
+// Unflown; gamma against loft against pitch is what falsifies it.
+parameter aoa_max is 30.
 
-// alt_handoff: the altitude, metres, at which this script lets go. Above
-// the air that matters, so whatever flies the entry gets the vehicle with
-// its options open rather than already committed. Unflown.
-parameter alt_handoff is 25000.
+// p_handoff: the ambient pressure, atmospheres, at which this script lets
+// go on the way down. A pressure rather than an altitude for the same
+// reason p_boost is one -- the statement is "above the air that matters",
+// so that whatever flies the entry gets the vehicle with its options still
+// open. Below p_boost, so the handoff sits higher than the boost began.
+// Unflown.
+parameter p_handoff is 0.025.
 
 // dv_reserve: delta-v held back from the boost, m/s. Unlike a booster, a
 // vehicle that has to get itself home may want some -- but the default is
@@ -131,7 +146,7 @@ local rows is 0.
 
 // The commanded pitch: the minimum-energy loft for the range still to go,
 // plus the same again of correction for wherever the velocity vector
-// actually is.
+// actually is, held inside aoa_max of that velocity.
 //
 // The rule prescribes the *velocity* angle at burnout; commanding the
 // *thrust* at it would only reach it asymptotically, and a short burn is
@@ -140,13 +155,20 @@ local rows is 0.
 // degrees points the nose five above the loft. Nothing is chosen in that:
 // leading by the error is the symmetric statement, it converges for any
 // positive gain, and one is the gain that costs the least cosine getting
-// there. The band is the only thing here that is a number.
+// there.
+//
+// Written about gamma rather than about the horizon, because that is what
+// the cap is about: the correction is 2*(loft - gamma) off the velocity
+// vector, and aoa_max clamps it there. At gamma = loft the correction is
+// zero and the nose sits on the flight path, which is where a converged
+// burn should be pointing.
 //
 // phi is re-read every cycle, so as the ground closes the loft steepens
 // toward 45 degrees on its own.
 function boost_pitch {
+  local gamma is angle_of_ascent().
   local loft is ballistic_loft(range_angle(tgt)).
-  return max(pitch_min, min(pitch_max, loft + (loft - angle_of_ascent()))).
+  return gamma + max(-aoa_max, min(aoa_max, 2 * (loft - gamma))).
 }
 
 // Azimuth from the targeting loop, pitch from the loft rule. The azimuth
@@ -237,8 +259,8 @@ log "# target  " + round(target_lat, 4) + " " + round(target_lng, 4)
     + "  loft " + round(ballistic_loft(phi0), 2) to flightlog.
 log "# tunables  miss_bar " + miss_bar + "  align_bar " + align_bar
     + "  t_taper " + t_taper + "  tau_bias " + tau_bias
-    + "  p_boost " + p_boost + "  pitch band " + pitch_min + " " + pitch_max
-    + "  alt_handoff " + alt_handoff + "  dv_reserve " + dv_reserve
+    + "  p_boost " + p_boost + "  aoa_max " + aoa_max
+    + "  p_handoff " + p_handoff + "  dv_reserve " + dv_reserve
     + "  use_tr " + use_tr + "  tr_available " + addons:available("TR")
     + "  range_bias " + range_bias to flightlog.
 log col_names:join(",") to flightlog.
@@ -359,8 +381,8 @@ print "Cutoff: " + why + ", miss " + miss_text + ".".
 // pointing somewhere deliberate rather than wherever the burn left it.
 set phase to "COAST".
 lock steering to lookdirup(-ship:velocity:surface, ship:facing:topvector).
-until ship:altitude < alt_handoff or ship:status = "LANDED"
-      or ship:status = "SPLASHED" or abort {
+until (air_pressure() >= p_handoff and ship:verticalspeed < 0)
+      or ship:status = "LANDED" or ship:status = "SPLASHED" or abort {
   if time:seconds - t_logged >= 1 {
     local dt is max(0.02, time:seconds - t_prev).
     set t_prev to time:seconds.

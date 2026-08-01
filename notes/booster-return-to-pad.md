@@ -146,9 +146,11 @@ named exit from the boost loop falls through to entry:
 - `miss inside the bar` — the burn did its job.
 - `miss growing past its best` — the overshoot guard above.
 - `engine dry` / `reserve reached` — the propellant is spent.
-- `below the burn floor` — `alt_floor`, under which a booster held broadside to the
-  airflow is a structural and control problem this script has no model for, and the
-  drag-free arc has stopped describing the flight at all.
+- `into the air below the burn floor` — `p_burn`, past which a booster held broadside to
+  the airflow is a structural and control problem this script has no model for, and the
+  drag-free arc has stopped describing the flight at all. Both halves of that are
+  statements about how much air there is, so the floor is a pressure; an altitude would
+  have been a Kerbin number wearing a general name.
 - `no terrain crossing to aim at`, held for two seconds before it counts — a burn that
   lifted periapsis clear of the terrain has no impact point to close on, and continuing
   would be steering on a stale number.
@@ -164,10 +166,21 @@ otherwise have been a guess: ask once a second from the atmospheric interface al
 down. Asking early cannot open a canopy early, and it cannot miss the first safe moment.
 
 The one thing `CHUTESSAFE` cannot cover is a parachute module kOS's safe check does not
-know about. So `alt_release` is a hard deploy, unconditional, plus the handover: steering
-released, controls neutralised, SAS back on, so nothing is fighting the canopies. Its
-argument is that down there the booster is at terminal velocity in dense air — the
-condition stock chutes are rated to open in — with tens of seconds of fall left.
+know about. So `q_chute` is a hard deploy, unconditional, plus the handover: steering
+released, controls neutralised, SAS back on, so nothing is fighting the canopies.
+
+It is a dynamic pressure rather than an altitude, and that is not a cosmetic change. What
+destroys a canopy is q, so q is the quantity to test — and testing it is precisely what
+`CHUTESSAFE` does, which makes the same test, made independently, the right backstop for
+`CHUTESSAFE` failing to answer. It is also self-timing, which an altitude is not: q falls
+under the bar when drag has taken the booster to something near terminal velocity, and that
+is simultaneously the earliest safe moment and, on the way down, shortly before the ground.
+Nothing has to estimate how much fall is left, and nothing has to know how thick this body's
+air is. The altitude it replaced encoded both, silently, for Kerbin.
+
+The value is deliberately conservative and unverified. Being late costs altitude the
+working path would have spent anyway; being early costs the canopy. The falsifier is the
+`q` column at the row the chutes come out, against whether they survived.
 
 Retrograde is held all the way to that point. It is the attitude that puts the most drag in
 the way, which makes for the shortest, slowest, coolest entry, and it is the one the
@@ -236,8 +249,14 @@ SETTLE row's `d_kep` — where the booster was going to land before anything was
 
 ## Open
 
-- **Every tunable is unflown.** `t_taper`, `tau_bias`, `alt_floor`, `alt_release` and
-  `t_settle` are arguments with numbers attached, not measurements.
+- **Every tunable is unflown.** `t_taper`, `tau_bias`, `p_burn`, `q_chute` and `t_settle`
+  are arguments with numbers attached, not measurements.
+- **A canopy that opens before `q_chute` is fought for a few seconds.** The retrograde hold
+  runs until the backstop's own condition, and `CHUTESSAFE`'s threshold is the game's, not
+  this script's — if it is less conservative, the chutes come out while the wheels are
+  still holding an attitude. Fixing it needs a deployment readback, and `CHUTESSAFE` cannot
+  give one: it reads true both when everything is deployed and when nothing may be
+  (`kos-facts.md`). A per-module state read would, and is not built.
 - **No mid-course correction.** The boostback is the only burn, and it is committed before
   entry has measured any drag at all. Reserving a little propellant for a correction once
   the entry deceleration is readable is the obvious next lever, and it is the one that
@@ -251,9 +270,9 @@ SETTLE row's `d_kep` — where the booster was going to land before anything was
   waits for a flight that would witness it.
 - **The pilot's abort ends the burn but not the parachutes.** An abort hands the controls
   back and stops the boost; `CHUTESSAFE` goes on being asked for every second, and the hard
-  deploy at `alt_release` is tracked on its own flag so an abort high up cannot consume it.
-  That is a deliberate choice about whose job the canopies are, and a pilot who wants them
-  held has no way to say so.
+  deploy is tracked on its own flag so an abort high up cannot consume it. That is a
+  deliberate choice about whose job the canopies are, and a pilot who wants them held has
+  no way to say so.
 - **Scope, standing:** Kerbin, an easterly launch, a booster that separates downrange and
-  above `alt_floor`. The geometry is general — nothing in the loop assumes a direction —
-  but nothing off that profile has been thought about.
+  in air thinner than `p_burn`. The geometry is general — nothing in the loop assumes a
+  direction — but nothing off that profile has been thought about.

@@ -89,19 +89,35 @@ parameter tau_bias is 5.
 // carried home is recovered at its own value rather than the booster's.
 parameter dv_reserve is 0.
 
-// alt_floor: the altitude, metres, below which the boostback will not
-// burn. Down there a booster held broadside to the airflow is a structural
-// and control problem this script has no model for, and the impact
-// predictor's drag-free arc has stopped describing the flight. Unflown.
-parameter alt_floor is 10000.
+// p_burn: the ambient pressure, in atmospheres, above which the boostback
+// will not burn. Both reasons to stop are about air -- a booster held
+// broadside to the airflow is a structural and control problem this script
+// has no model for, and the drag-free impact predictor has stopped
+// describing the flight -- so the floor is a pressure rather than an
+// altitude, and means the same thing on any body with an atmosphere. An
+// altitude here would be a Kerbin number wearing a general name.
+// ballistic_hop.ks gates its own burn on the same quantity from the other
+// side. Roughly a quarter of sea level; unflown, and the alt column against
+// the cutoff row is what records where it actually bit.
+parameter p_burn is 0.25.
 
-// alt_release: the altitude, metres, at which the retrograde hold is
-// released, control handed back to SAS, and every parachute deployed
-// unconditionally as a backstop against CHUTESSAFE never having fired.
-// Below here the booster is at terminal velocity in dense air, which is
-// the condition stock chutes are rated to open in, and what is left of the
-// fall is tens of seconds -- enough for a canopy. Unflown.
-parameter alt_release is 2500.
+// q_chute: the dynamic pressure, kPa, below which the backstop deploys
+// every parachute unconditionally and hands the controls back.
+//
+// This replaces an altitude, and the reason is that an altitude cannot say
+// what this needs to say. What destroys a canopy is dynamic pressure, so
+// that is the quantity to test -- and testing it is exactly what
+// CHUTESSAFE does, which makes it the right backstop for CHUTESSAFE
+// failing to answer. It is also self-timing: q falls below the bar when
+// drag has taken the booster to something near terminal velocity, which is
+// both the earliest safe moment and, on the way down, shortly before the
+// ground. Nothing has to estimate how much fall is left.
+//
+// Deliberately conservative and unverified. Being late costs altitude the
+// working path would have used anyway; being early costs the canopy. The
+// falsifier is the q column at the row the chutes come out, against
+// whether they survived.
+parameter q_chute is 10.
 
 // t_settle: seconds between the script starting and the flip, for the
 // separation transient to damp and the stage above to clear the plume.
@@ -281,8 +297,8 @@ log "# target  " + round(target_lat, 4) + " " + round(target_lng, 4)
     + "  vspd " + round(ship:verticalspeed, 1) to flightlog.
 log "# tunables  miss_bar " + miss_bar + "  align_bar " + align_bar
     + "  t_taper " + t_taper + "  tau_bias " + tau_bias
-    + "  dv_reserve " + dv_reserve + "  alt_floor " + alt_floor
-    + "  alt_release " + alt_release
+    + "  dv_reserve " + dv_reserve + "  p_burn " + p_burn
+    + "  q_chute " + q_chute
     + "  use_tr " + use_tr + "  tr_available " + addons:available("TR")
     + "  range_bias " + range_bias
     + "  afbw_released " + afbw_released to flightlog.
@@ -362,7 +378,7 @@ if phase = "BOOST" {
     if abort { set why to "pilot abort". break. }
     if ship:availablethrust <= 0 { set why to "engine dry". break. }
     if ship:deltav:current <= dv_reserve { set why to "reserve reached". break. }
-    if ship:altitude < alt_floor { set why to "below the burn floor". break. }
+    if air_pressure() > p_burn { set why to "into the air below the burn floor". break. }
     if now > t_boost_end { break. }
 
     // The burn is sampled four times a second and the console still reads
@@ -437,26 +453,37 @@ until ship:status = "LANDED" or ship:status = "SPLASHED" {
     set warping to false.
   }
 
-  // The handback: the release altitude and the pilot's abort do the same
+  // Descending with the air already thick enough to be survivable for a
+  // canopy: the backstop's own condition, and the moment nothing more is
+  // gained by holding an attitude.
+  local q_now is ship:q * constant:atmtokpa.
+  local chute_safe is q_now < q_chute and ship:verticalspeed < 0
+      and ship:altitude < body:atm:height.
+
+  // The handback: the backstop's moment and the pilot's abort do the same
   // thing, so they share it.
-  if (ship:altitude < alt_release or abort) and not released {
+  if (chute_safe or abort) and not released {
     unlock steering.
     set ship:control:neutralize to true.
     sas on.
     set released to true.
     set phase to "CHUTE".
-    print "Controls handed back at " + round(ship:altitude) + " m"
+    print "Controls handed back at " + round(ship:altitude) + " m, q "
+        + round(q_now, 2) + " kPa"
         + (choose " (pilot abort)" if abort else "") + ".".
   }
 
   // The hard deploy is a separate flag from the handback, because an abort
   // high up hands the controls back long before the backstop is due and
-  // must not consume it. It is the backstop for a parachute module kOS's
-  // safe check does not cover; down here the booster is at terminal
-  // velocity in dense air, the condition stock chutes are rated to open in.
-  if ship:altitude < alt_release and not hard_armed {
+  // must not consume it. This is the backstop for a parachute module kOS's
+  // safe check does not cover: q under the bar is the same test CHUTESSAFE
+  // makes, made here instead.
+  if chute_safe and not hard_armed {
     chutes on.
     set hard_armed to true.
+    log "# hard deploy  alt " + round(ship:altitude)
+        + "  q " + round(q_now, 3)
+        + "  vspd " + round(ship:verticalspeed, 1) to flightlog.
   }
 
   if now - t_logged >= 1 {

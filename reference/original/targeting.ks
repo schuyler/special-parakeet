@@ -136,11 +136,14 @@ function targeting_survey {
   if steer and m_new > 0 { set st["cmd"] to m_vec:normalized. }
 
   if st["miss"] >= 0 {
-    // Filtered over a second: several control cycles, short against the
-    // burn and long against the step the bisection's own tolerance puts
-    // in the crossing time.
+    // The rate exists to drive the taper, so the taper sizes its filter:
+    // half of t_taper, which settles the measurement twice over inside the
+    // window the throttle it drives has to act in. Choosing a number here
+    // instead would be a second time constant bearing no relation to the
+    // first, and the two would then have to be tuned against each other.
+    local tau_rate is st["t_taper"] / 2.
     set st["miss_rate"] to st["miss_rate"]
-        + ((m_new - st["miss"]) / dt - st["miss_rate"]) * min(1, dt).
+        + ((m_new - st["miss"]) / dt - st["miss_rate"]) * min(1, dt / tau_rate).
   }
   set st["miss"] to m_new.
   if m_new < st["miss_min"] { set st["miss_min"] to m_new. }

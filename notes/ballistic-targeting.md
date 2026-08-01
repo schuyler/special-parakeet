@@ -97,9 +97,17 @@ in that gain. Leading by the error is the symmetric statement of the problem, it
 for any positive gain, and one is the gain that spends the least cosine getting there. Φ is
 re-read every cycle, so the loft steepens toward 45° on its own as the ground closes.
 
-The band `pitch_min`/`pitch_max` is the only number in it, and it exists because the
-correction — not the rule — is what could run away if γ starts far from the loft. `pitch`
-pinned at a band edge in the log is that happening.
+The one number in it is `aoa_max`, and it exists because the correction — not the rule —
+is what could run away: `pitch = 2·loft − γ` is unbounded in γ, so a burn starting with the
+velocity far from the loft asks for an attitude related to neither. What bounds it is an
+angle off the *airflow*, not a band of absolute pitch, and that difference is the whole
+reason it is one number instead of two. An absolute band sits at fixed heights above a
+horizon the vehicle may not be anywhere near; a cap on angle of attack rides wherever the
+velocity vector is, and it prices something real. A nose 30° off its own velocity puts
+cos 30° = 0.87 of the thrust along the flight path and spends the other 13% turning it —
+which is exactly the trade the correction is making, so 13% is a ceiling on the trade
+rather than a guess about attitudes. `pitch` pinned at `γ ± aoa_max` in the log is the
+correction saturating.
 
 The azimuth is not part of this at all: it comes from the loop's miss vector, which points
 wherever the impact is wrong, sideways included. Cross-range correction is not a second
@@ -114,7 +122,9 @@ own the landing, and both refusals are deliberate:
   and the script engages when ambient pressure falls below `p_boost`. Stated as a pressure
   rather than an altitude so it means the same thing on any body with air. It logs through
   the wait, so the climb is on the record even though nothing is flying it.
-- **It lets go at `alt_handoff`**, above the air that matters, and says what to run next.
+- **It lets go at `p_handoff`**, above the air that matters, and says what to run next.
+  A pressure for the same reason `p_boost` is one: the statement is about how much air
+  there is, and an altitude would be a Kerbin number wearing a general name.
   The entry belongs to `reentry.ks` and the terminal to `autopilot.ks` with the target as
   its last waypoint. A script that tried to own those would be reimplementing both, badly.
 
